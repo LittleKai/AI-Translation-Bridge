@@ -43,6 +43,9 @@ class AITranslationBridgeGUI:
         # Compact mode flag
         self.compact_mode = False
 
+        # Store app key variable
+        self.app_key_var = tk.StringVar(value="")
+
     def init_variables(self):
         """Initialize all GUI variables"""
         self.is_running = False
@@ -120,20 +123,19 @@ class AITranslationBridgeGUI:
         # Start button
         self.start_button = ttk.Button(
             control_frame,
-            text="Start (F1)",
-            # command=self.start_bot
+            text="Start (Shift+F1)",
+            command=self.start_bot
         )
         self.start_button.grid(row=0, column=0, padx=(0, 5), sticky=(tk.W, tk.E), ipady=5)
 
         # Stop button
         self.stop_button = ttk.Button(
             control_frame,
-            text="Stop (F3)",
-            # command=self.stop_bot,
+            text="Stop (Shift+F3)",
+            command=self.stop_bot,
             state="disabled"
         )
         self.stop_button.grid(row=0, column=1, padx=(5, 0), sticky=(tk.W, tk.E), ipady=5)
-
 
     def setup_events(self):
         """Setup event handlers"""
@@ -146,13 +148,44 @@ class AITranslationBridgeGUI:
         """Setup keyboard shortcuts"""
         try:
             import keyboard
-            keyboard.add_hotkey('f1', self.toggle_compact_mode)
+            keyboard.add_hotkey('shift+f1', self.start_bot)
+            keyboard.add_hotkey('shift+f3', self.stop_bot)
         except Exception as e:
             self.log_message(f"Warning: Could not setup keyboard shortcuts: {e}")
 
+    def start_bot(self):
+        """Start bot and toggle compact mode"""
+        if not self.is_running and self.key_valid:
+            self.is_running = True
+            self.start_button.config(state="disabled")
+            self.stop_button.config(state="normal")
+            self.status_section.set_bot_status("Running", "green")
+            self.log_message("Bot started")
+
+            # Enter compact mode
+            if not self.compact_mode:
+                self.toggle_compact_mode()
+
+    def stop_bot(self):
+        """Stop bot and exit compact mode"""
+        if self.is_running:
+            self.is_running = False
+            self.start_button.config(state="normal")
+            self.stop_button.config(state="disabled")
+            self.status_section.set_bot_status("Stopped", "red")
+            self.log_message("Bot stopped")
+
+            # Exit compact mode
+            if self.compact_mode:
+                self.toggle_compact_mode()
+
     def toggle_compact_mode(self):
-        """Toggle compact mode (F1 key)"""
+        """Toggle compact mode"""
         self.compact_mode = not self.compact_mode
+
+        # Get current position
+        current_x = self.root.winfo_x()
+        current_y = self.root.winfo_y()
 
         if self.compact_mode:
             # Hide header and tabs
@@ -162,8 +195,16 @@ class AITranslationBridgeGUI:
             # Keep window on top
             self.root.attributes('-topmost', True)
 
-            # Resize window to compact size
-            self.root.geometry("600x400")
+            # Calculate compact height based on visible content
+            self.root.update_idletasks()
+
+            # Keep original width, adjust height
+            compact_width = self.window_manager.original_size['width']
+            compact_height = 400  # Adjust based on content
+
+            # Set compact size while maintaining position
+            self.root.geometry(f"{compact_width}x{compact_height}+{current_x}+{current_y}")
+
         else:
             # Show header and tabs
             self.header_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
@@ -172,14 +213,26 @@ class AITranslationBridgeGUI:
             # Remove always on top
             self.root.attributes('-topmost', False)
 
-            # Restore window size
-            self.window_manager.setup_window()
+            # Restore original size while maintaining position
+            width = self.window_manager.original_size['width']
+            height = self.window_manager.original_size['height']
+            self.root.geometry(f"{width}x{height}+{current_x}+{current_y}")
 
     def check_key_validation(self):
         """Check key validation status"""
         def check_in_background():
             try:
-                is_valid, message = validate_application_key()
+                # Get key from settings or variable
+                key_to_validate = self.app_key_var.get() if self.app_key_var.get() else ""
+
+                if not key_to_validate:
+                    self.key_valid = False
+                    self.initial_key_validation_done = True
+                    self.root.after(0, self.status_section.update_key_status, False, "No key provided")
+                    return
+
+                from key_validator import validate_application_key_with_input
+                is_valid, message = validate_application_key_with_input(key_to_validate)
                 self.key_valid = is_valid
                 self.initial_key_validation_done = True
                 self.root.after(0, self.status_section.update_key_status, is_valid, message)
@@ -191,7 +244,8 @@ class AITranslationBridgeGUI:
 
     def open_settings(self):
         """Open settings window"""
-        messagebox.showinfo("Settings", "Settings dialog will be implemented")
+        from gui.dialogs.settings_dialog import SettingsDialog
+        SettingsDialog(self)
 
     def log_message(self, message):
         """Add message to log with timestamp"""
@@ -229,5 +283,9 @@ class AITranslationBridgeGUI:
     def run(self):
         """Start the GUI application"""
         self.log_message("AI Translation Bridge initialized.")
-        self.log_message("Press F1 to toggle compact mode.")
+        self.log_message("Press Shift+F1 to start, Shift+F3 to stop.")
+
+        # Load settings including app key
+        self.window_manager.load_settings()
+
         self.root.mainloop()

@@ -16,6 +16,9 @@ class WindowManager:
             'y': 20
         }
 
+        # Store original size for compact mode toggle
+        self.original_size = {'width': 500, 'height': 750}
+
     def load_initial_settings(self):
         """Load initial settings including window position before GUI setup"""
         try:
@@ -26,6 +29,11 @@ class WindowManager:
                 # Load window settings if they exist
                 if 'window' in settings:
                     self.window_settings.update(settings['window'])
+                    # Store original size
+                    self.original_size = {
+                        'width': self.window_settings.get('width', 500),
+                        'height': self.window_settings.get('height', 750)
+                    }
 
         except Exception as e:
             print(f"Warning: Could not load initial settings: {e}")
@@ -68,39 +76,42 @@ class WindowManager:
         self.main_window.root.resizable(True, True)
         self.main_window.root.attributes('-topmost', True)
 
-    def load_tab_settings(self):
-        """Load tab settings after tabs are created"""
-        try:
-            if not os.path.exists('bot_settings.json'):
-                return
-
-            with open('bot_settings.json', 'r') as f:
-                settings = json.load(f)
-
-
-        except Exception as e:
-            self.main_window.log_message(f"Warning: Could not load tab settings: {e}")
 
     def save_settings(self):
         """Save all settings to file"""
         try:
+            # Save current window settings (only if not in compact mode)
+            if not self.main_window.compact_mode:
+                try:
+                    self.main_window.root.update_idletasks()
+                    self.window_settings = {
+                        'width': self.main_window.root.winfo_width(),
+                        'height': self.main_window.root.winfo_height(),
+                        'x': self.main_window.root.winfo_x(),
+                        'y': self.main_window.root.winfo_y()
+                    }
+                    # Update original size
+                    self.original_size = {
+                        'width': self.window_settings['width'],
+                        'height': self.window_settings['height']
+                    }
+                except:
+                    pass
 
-            # Save current window settings
-            try:
-                self.main_window.root.update_idletasks()
-                self.window_settings = {
-                    'width': self.main_window.root.winfo_width(),
-                    'height': self.main_window.root.winfo_height(),
-                    'x': self.main_window.root.winfo_x(),
-                    'y': self.main_window.root.winfo_y()
-                }
-            except:
-                pass
+            # Get settings from tabs
+            tab_settings = self.main_window.get_current_settings()
+
+            # Add application key to settings
+            app_key = ""
+            if hasattr(self.main_window, 'app_key_var'):
+                app_key = self.main_window.app_key_var.get()
 
             # Combine all settings
             all_settings = {
                 'window': self.window_settings,
-                'scenario': self.main_window.scenario_selection.get()
+                'translation': tab_settings.get('translation', {}),
+                'processing': tab_settings.get('processing', {}),
+                'app_key': app_key
             }
 
             # Save to file
@@ -122,6 +133,34 @@ class WindowManager:
             # Load window settings if they exist
             if 'window' in settings:
                 self.window_settings = settings['window']
+                self.original_size = {
+                    'width': self.window_settings.get('width', 500),
+                    'height': self.window_settings.get('height', 750)
+                }
+
+            # Load app key
+            if 'app_key' in settings and hasattr(self.main_window, 'app_key_var'):
+                self.main_window.app_key_var.set(settings['app_key'])
 
         except Exception as e:
             self.main_window.log_message(f"Warning: Could not load settings: {e}")
+
+    def load_tab_settings(self):
+        """Load tab settings after tabs are created"""
+        try:
+            if not os.path.exists('bot_settings.json'):
+                return
+
+            with open('bot_settings.json', 'r') as f:
+                settings = json.load(f)
+
+            # Load translation settings
+            if 'translation' in settings:
+                self.main_window.translation_tab.load_settings(settings['translation'])
+
+            # Load processing settings
+            if 'processing' in settings:
+                self.main_window.processing_tab.load_settings(settings['processing'])
+
+        except Exception as e:
+            self.main_window.log_message(f"Warning: Could not load tab settings: {e}")

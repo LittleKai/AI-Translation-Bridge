@@ -1,0 +1,21 @@
+{
+  "window": {
+    "width": 500,
+    "height": 750,
+    "x": 1349,
+    "y": 22
+  },
+  "translation": {
+    "input_file": "",
+    "output_file": "",
+    "start_id": "1",
+    "stop_id": "100",
+    "output_directory": "C:\\Users\\XEON\\Documents\\AIBridge"
+  },
+  "processing": {
+    "batch_size": "10",
+    "prompt_type": "acc",
+    "ai_service": "Gemini"
+  },
+  "app_key": "mzcnpXkEwW"
+}
