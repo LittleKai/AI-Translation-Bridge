@@ -75,7 +75,9 @@ class AITranslationBridgeGUI:
         self.create_header_section(self.main_frame, row=0)
         self.status_section = StatusSection(self.main_frame, self, row=1)
         self.create_tabbed_section(self.main_frame, row=2)
-        self.log_section = LogSection(self.main_frame, self, row=3)
+        self.create_control_section(self.main_frame, row=3)
+        self.log_section = LogSection(self.main_frame, self, row=4)
+
 
     def create_header_section(self, parent, row):
         """Create header section with title and settings button"""
@@ -107,6 +109,31 @@ class AITranslationBridgeGUI:
         processing_frame = ttk.Frame(self.notebook)
         self.notebook.add(processing_frame, text="Processing")
         self.processing_tab = ProcessingTab(processing_frame, self)
+
+    def create_control_section(self, parent, row):
+        """Create bot control buttons section"""
+        control_frame = ttk.Frame(parent)
+        control_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
+        control_frame.columnconfigure(0, weight=1)
+        control_frame.columnconfigure(1, weight=1)
+
+        # Start button
+        self.start_button = ttk.Button(
+            control_frame,
+            text="Start (F1)",
+            # command=self.start_bot
+        )
+        self.start_button.grid(row=0, column=0, padx=(0, 5), sticky=(tk.W, tk.E), ipady=5)
+
+        # Stop button
+        self.stop_button = ttk.Button(
+            control_frame,
+            text="Stop (F3)",
+            # command=self.stop_bot,
+            state="disabled"
+        )
+        self.stop_button.grid(row=0, column=1, padx=(5, 0), sticky=(tk.W, tk.E), ipady=5)
+
 
     def setup_events(self):
         """Setup event handlers"""

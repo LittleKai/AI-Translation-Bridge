@@ -10,9 +10,9 @@ class WindowManager:
 
         # Default window settings
         self.window_settings = {
-            'width': 700,
-            'height': 900,
-            'x': 100,
+            'width': 500,
+            'height': 750,
+            'x': 1400,
             'y': 20
         }
 
@@ -34,8 +34,8 @@ class WindowManager:
         """Setup window with loaded settings"""
         settings = self.window_settings
 
-        width = max(700, settings.get('width', 700))
-        height = max(850, settings.get('height', 900))
+        width = max(500, settings.get('width', 500))
+        height = max(750, settings.get('height', 750))
 
         # Get saved position or use default
         screen_width = self.main_window.root.winfo_screenwidth()
@@ -63,7 +63,7 @@ class WindowManager:
         y = max(0, y)
 
         # Set window properties
-        self.main_window.root.minsize(650, 850)
+        self.main_window.root.minsize(500, 750)
         self.main_window.root.geometry(f"{width}x{height}+{x}+{y}")
         self.main_window.root.resizable(True, True)
         self.main_window.root.attributes('-topmost', True)
