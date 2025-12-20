@@ -1,5 +1,6 @@
 import json
 import os
+from helper.key_encryption import KeyEncryption
 
 
 class WindowManager:
@@ -7,6 +8,7 @@ class WindowManager:
 
     def __init__(self, main_window):
         self.main_window = main_window
+        self.key_encryption = KeyEncryption()
 
         # Default window settings
         self.window_settings = {
@@ -80,9 +82,8 @@ class WindowManager:
         self.main_window.root.resizable(True, True)
         self.main_window.root.attributes('-topmost', True)
 
-
     def save_settings(self):
-        """Save all settings to file"""
+        """Save all settings to file with encrypted API keys"""
         try:
             # Check if compact_mode exists before accessing it
             if hasattr(self.main_window, 'compact_mode'):
@@ -126,11 +127,21 @@ class WindowManager:
             if hasattr(self.main_window, 'app_key_var'):
                 app_key = self.main_window.app_key_var.get()
 
+            # Encrypt API keys in processing settings
+            processing_settings = tab_settings.get('processing', {})
+            if 'api_configs' in processing_settings:
+                for service, config in processing_settings['api_configs'].items():
+                    if 'keys' in config and config['keys']:
+                        # Encrypt the keys
+                        config['keys_encrypted'] = self.key_encryption.encrypt_keys_list(config['keys'])
+                        # Remove plain keys from saved settings
+                        config['keys'] = []
+
             # Combine all settings
             all_settings = {
                 'window': self.window_settings,
                 'translation': tab_settings.get('translation', {}),
-                'processing': tab_settings.get('processing', {}),
+                'processing': processing_settings,
                 'app_key': app_key
             }
 
@@ -170,7 +181,7 @@ class WindowManager:
             self.main_window.log_message(f"Warning: Could not load settings: {e}")
 
     def load_tab_settings(self):
-        """Load tab settings after tabs are created"""
+        """Load tab settings after tabs are created with decrypted API keys"""
         try:
             if not os.path.exists('bot_settings.json'):
                 return
@@ -182,9 +193,23 @@ class WindowManager:
             if 'translation' in settings:
                 self.main_window.translation_tab.load_settings(settings['translation'])
 
-            # Load processing settings
+            # Process and decrypt API keys before loading
             if 'processing' in settings:
-                self.main_window.processing_tab.load_settings(settings['processing'])
+                processing_settings = settings['processing'].copy()
+
+                # Decrypt API keys if they exist
+                if 'api_configs' in processing_settings:
+                    for service, config in processing_settings['api_configs'].items():
+                        if 'keys_encrypted' in config and config['keys_encrypted']:
+                            # Decrypt the keys
+                            config['keys'] = self.key_encryption.decrypt_keys_list(config['keys_encrypted'])
+                            # Remove encrypted keys from runtime settings
+                            del config['keys_encrypted']
+                        elif 'keys' not in config:
+                            config['keys'] = []
+
+                # Load processing settings with decrypted keys
+                self.main_window.processing_tab.load_settings(processing_settings)
 
         except Exception as e:
             self.main_window.log_message(f"Warning: Could not load tab settings: {e}")

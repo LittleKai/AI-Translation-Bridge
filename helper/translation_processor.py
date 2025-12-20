@@ -1,11 +1,9 @@
 import pandas as pd
-import requests
-import json
 import time
 import os
 import re
-import random
 from datetime import datetime
+from helper.ai_api_handler import AIAPIHandler
 
 
 class TranslationProcessor:
@@ -15,7 +13,25 @@ class TranslationProcessor:
         self.main_window = main_window
         self.is_running = False
         self.current_api_keys = []
-        self.failed_keys = set()
+        self.api_handler = AIAPIHandler(main_window)
+        self.current_output_file = None
+        self.total_input_rows = 0
+        self.processed_rows = 0
+
+    def update_progress(self):
+        """Update progress display in status section"""
+        if self.current_output_file and os.path.exists(self.current_output_file):
+            try:
+                output_df = pd.read_csv(self.current_output_file)
+                self.processed_rows = len(output_df)
+            except:
+                self.processed_rows = 0
+        else:
+            self.processed_rows = 0
+
+        # Update status display with progress
+        progress_text = f"Progress: {self.processed_rows}/{self.total_input_rows}"
+        self.main_window.status_section.set_bot_status(progress_text, "green")
 
     def start_processing(self):
         """Start the translation processing"""
@@ -40,35 +56,38 @@ class TranslationProcessor:
             self.main_window.log_message(f"Processing file: {os.path.basename(input_file)}")
             self.main_window.log_message(f"Full path: {input_file}")
 
-            # Generate output path based on input file
+            # Generate output path based on input file and prompt type
             output_path = self.generate_output_path(input_file, processing_settings.get('prompt_type'))
+            self.current_output_file = output_path
             self.main_window.log_message(f"Output will be saved to: {output_path}")
 
             # Load API configuration
             ai_service = processing_settings.get('ai_service')
-            if "API" in ai_service:
-                api_config = processing_settings['api_configs'].get(ai_service, {})
-                self.current_api_keys = api_config.get('keys', [])
 
-                if not self.current_api_keys:
-                    self.main_window.log_message(f"Error: No API keys configured for {ai_service}")
-                    return
+            # Check if it's an API service
+            if "API" not in ai_service:
+                self.main_window.log_message(f"Error: {ai_service} is not an API service. Use web interface mode instead.")
+                return
 
-                # Process with API
-                self.process_with_api(
-                    input_file,
-                    output_path,
-                    ai_service,
-                    processing_settings.get('ai_model'),
-                    api_config,
-                    int(processing_settings.get('batch_size', 10)),
-                    processing_settings.get('prompt_type'),
-                    translation_settings.get('start_id'),
-                    translation_settings.get('stop_id')
-                )
-            else:
-                # Process with web interface (existing functionality)
-                self.main_window.log_message(f"Web interface mode for {ai_service} not yet implemented")
+            api_config = processing_settings['api_configs'].get(ai_service, {})
+            self.current_api_keys = api_config.get('keys', [])
+
+            if not self.current_api_keys:
+                self.main_window.log_message(f"Error: No API keys configured for {ai_service}")
+                return
+
+            # Process with API
+            self.process_with_api(
+                input_file,
+                output_path,
+                ai_service,
+                processing_settings.get('ai_model'),
+                api_config,
+                int(processing_settings.get('batch_size', 10)),
+                processing_settings.get('prompt_type'),
+                translation_settings.get('start_id'),
+                translation_settings.get('stop_id')
+            )
 
         except Exception as e:
             self.main_window.log_message(f"Error during processing: {e}")
@@ -76,37 +95,35 @@ class TranslationProcessor:
             self.main_window.log_message(traceback.format_exc())
         finally:
             self.is_running = False
+            # Final progress update
+            self.update_progress()
 
-    def generate_output_path(self, input_path, version_suffix=""):
-        """Generate output path based on input file and detected language"""
+    def generate_output_path(self, input_path, prompt_type):
+        """Generate output path based on input file name and prompt type"""
         # Get absolute path to work with
         input_path = os.path.abspath(input_path)
         input_filename = os.path.basename(input_path)
-        input_dirname = os.path.dirname(input_path)
 
-        # Detect language from folder name or file path
-        lang_match = re.search(r'Raw_(JP|EN|KR|CN|VI)', input_dirname)
+        # Detect language from filename only
+        lang_folder = None
+        for lang in ['JP', 'EN', 'KR', 'CN', 'VI']:
+            if lang in input_filename.upper():
+                lang_folder = lang
+                self.main_window.log_message(f"Detected language from filename: {lang}")
+                break
 
-        if not lang_match:
-            # Try to detect from filename
-            for lang in ['JP', 'EN', 'KR', 'CN', 'VI']:
-                if lang.lower() in input_filename.lower():
-                    lang_folder = lang
-                    break
-            else:
-                lang_folder = "Other"
-                self.main_window.log_message(f"Warning: Could not detect language, using 'Other' folder")
-        else:
-            lang_folder = lang_match.group(1)
-            self.main_window.log_message(f"Detected output language folder: {lang_folder}")
+        if not lang_folder:
+            lang_folder = "Other"
+            self.main_window.log_message(f"Warning: Could not detect language from filename, using 'Other' folder")
 
-        # Create output filename
+        # Create output filename with language and prompt type
         filename_without_ext, ext = os.path.splitext(input_filename)
 
-        if version_suffix:
-            output_filename = f"{filename_without_ext}_{version_suffix}_translated{ext}"
+        # Format: original_name_LANG_prompttype_translated.csv
+        if prompt_type:
+            output_filename = f"{filename_without_ext}_{lang_folder}_{prompt_type}_translated{ext}"
         else:
-            output_filename = f"{filename_without_ext}_translated{ext}"
+            output_filename = f"{filename_without_ext}_{lang_folder}_translated{ext}"
 
         # Create output directory
         output_dir = os.path.join(
@@ -126,31 +143,27 @@ class TranslationProcessor:
         """Load translation prompt based on detected language and prompt type"""
         # Get absolute path
         input_path = os.path.abspath(input_path)
+        input_filename = os.path.basename(input_path)
 
-        # Detect source language
-        lang_match = re.search(r'Raw_(JP|EN|KR|CN|VI)', input_path)
+        # Detect source language from filename only
+        source_lang = None
+        for lang in ['JP', 'EN', 'KR', 'CN', 'VI']:
+            if lang in input_filename.upper():
+                source_lang = lang
+                break
 
-        if not lang_match:
-            # Try filename detection
-            filename = os.path.basename(input_path)
-            for lang in ['JP', 'EN', 'KR', 'CN', 'VI']:
-                if lang.lower() in filename.lower():
-                    source_lang = lang
-                    break
-            else:
-                self.main_window.log_message("Error: Could not detect source language from path")
-                self.main_window.log_message("Path should contain a folder like 'Raw_CN' or filename with language code")
-                return None
-        else:
-            source_lang = lang_match.group(1)
+        if not source_lang:
+            self.main_window.log_message("Error: Could not detect source language from filename")
+            self.main_window.log_message("Filename should contain language code (CN, JP, EN, KR, VI)")
+            return None
 
-        self.main_window.log_message(f"Detected source language: {source_lang}")
+        self.main_window.log_message(f"Loading prompt for source language: {source_lang}, type: {prompt_type}")
 
         # Load prompt from Excel file
         try:
             prompt_file = "assets/translate_prompt.xlsx"
             if not os.path.exists(prompt_file):
-                self.main_window.log_message("Error: Prompt file not found")
+                self.main_window.log_message("Error: Prompt file not found at assets/translate_prompt.xlsx")
                 return None
 
             df = pd.read_excel(prompt_file)
@@ -161,14 +174,24 @@ class TranslationProcessor:
                 if not prompt_row.empty:
                     prompt = prompt_row.iloc[0][source_lang]
                     if pd.notna(prompt) and prompt:
-                        self.main_window.log_message(f"Loaded prompt for {source_lang}, type: {prompt_type}")
+                        self.main_window.log_message(f"Successfully loaded prompt for {source_lang}, type: {prompt_type}")
                         return prompt
+                    else:
+                        self.main_window.log_message(f"Error: Prompt is empty for {source_lang}, type: {prompt_type}")
+                else:
+                    self.main_window.log_message(f"Error: Prompt type '{prompt_type}' not found in file")
+            else:
+                if 'type' not in df.columns:
+                    self.main_window.log_message("Error: 'type' column not found in prompt file")
+                if source_lang not in df.columns:
+                    self.main_window.log_message(f"Error: Language column '{source_lang}' not found in prompt file")
+                    available_langs = [col for col in df.columns if col not in ['type', 'description']]
+                    self.main_window.log_message(f"Available languages: {', '.join(available_langs)}")
 
-            self.main_window.log_message(f"Error: Could not find prompt for {source_lang}, type: {prompt_type}")
             return None
 
         except Exception as e:
-            self.main_window.log_message(f"Error loading prompt: {e}")
+            self.main_window.log_message(f"Error loading prompt file: {e}")
             return None
 
     def process_with_api(self, input_file, output_file, ai_service, model_name, api_config,
@@ -178,12 +201,23 @@ class TranslationProcessor:
         # Load translation prompt
         prompt_template = self.load_translation_prompt(input_file, prompt_type)
         if not prompt_template:
+            self.main_window.log_message("Error: Failed to load translation prompt")
             return
 
         # Read input CSV
         try:
             df = pd.read_csv(input_file)
             self.main_window.log_message(f"Loaded {len(df)} rows from input file")
+
+            # Check required columns
+            if 'id' not in df.columns:
+                self.main_window.log_message("Error: CSV file must have 'id' column")
+                return
+            if 'text' not in df.columns:
+                self.main_window.log_message("Error: CSV file must have 'text' column")
+                self.main_window.log_message(f"Available columns: {', '.join(df.columns)}")
+                return
+
         except Exception as e:
             self.main_window.log_message(f"Error reading input file: {e}")
             return
@@ -198,24 +232,28 @@ class TranslationProcessor:
             if stop_id:
                 df = df[df['id'] <= stop_id]
 
-            self.main_window.log_message(f"Processing {len(df)} rows after filtering")
-        except:
-            pass
+            self.main_window.log_message(f"Processing {len(df)} rows after filtering (ID range: {start_id or 'start'} to {stop_id or 'end'})")
+            self.total_input_rows = len(df)
+        except Exception as e:
+            self.main_window.log_message(f"Warning: Could not filter by ID range: {e}")
+            self.total_input_rows = len(df)
 
         # Process in batches
         batch_size = int(batch_size) if batch_size else 10
         results = []
+        total_batches = (len(df) - 1) // batch_size + 1
 
-        for i in range(0, len(df), batch_size):
+        for batch_num, i in enumerate(range(0, len(df), batch_size), 1):
             if not self.is_running:
                 self.main_window.log_message("Processing stopped by user")
                 break
 
             batch = df.iloc[i:i+batch_size]
-            self.main_window.log_message(f"Processing batch {i//batch_size + 1}/{(len(df)-1)//batch_size + 1}")
+            batch_ids = batch['id'].tolist()
+            self.main_window.log_message(f"Processing batch {batch_num}/{total_batches} (IDs: {batch_ids[0]}-{batch_ids[-1]}, {len(batch)} rows)")
 
             # Create batch text
-            batch_text = "\n".join([f"{j+1}. {row['text']}" for j, row in batch.iterrows()])
+            batch_text = "\n".join([f"{j+1}. {row['text']}" for j, row in enumerate(batch.values)])
 
             # Format prompt
             count_info = f"Source text consists of {len(batch)} numbered lines from 1 to {len(batch)}."
@@ -223,21 +261,24 @@ class TranslationProcessor:
 
             # Call appropriate API
             translated_text = None
+            error_msg = None
 
             if ai_service == "Gemini API":
-                translated_text = self.call_gemini_api(prompt, model_name, api_config)
+                translated_text, error_msg = self.api_handler.call_gemini_api(prompt, model_name, api_config, self.current_api_keys)
             elif ai_service == "ChatGPT API":
-                translated_text = self.call_openai_api(prompt, model_name, api_config)
+                translated_text, error_msg = self.api_handler.call_openai_api(prompt, model_name, api_config, self.current_api_keys)
             elif ai_service == "Claude API":
-                translated_text = self.call_claude_api(prompt, model_name, api_config)
+                translated_text, error_msg = self.api_handler.call_claude_api(prompt, model_name, api_config, self.current_api_keys)
             elif ai_service == "Grok API":
-                translated_text = self.call_grok_api(prompt, model_name, api_config)
+                translated_text, error_msg = self.api_handler.call_grok_api(prompt, model_name, api_config, self.current_api_keys)
             elif ai_service == "Perplexity API":
-                translated_text = self.call_perplexity_api(prompt, model_name, api_config)
+                translated_text, error_msg = self.api_handler.call_perplexity_api(prompt, model_name, api_config, self.current_api_keys)
 
             if translated_text:
                 # Parse translated text
                 translations = self.parse_numbered_text(translated_text, len(batch))
+                successful_count = sum(1 for t in translations if t)
+                self.main_window.log_message(f"Batch {batch_num} completed: {successful_count}/{len(batch)} translations successful")
 
                 # Add to results
                 for (idx, row), translation in zip(batch.iterrows(), translations):
@@ -249,6 +290,7 @@ class TranslationProcessor:
                     })
             else:
                 # Mark batch as failed
+                self.main_window.log_message(f"Batch {batch_num} failed: {error_msg}")
                 for idx, row in batch.iterrows():
                     results.append({
                         'id': row['id'],
@@ -257,206 +299,34 @@ class TranslationProcessor:
                         'status': 'failed'
                     })
 
-            # Small delay between batches
-            time.sleep(2)
+            # Save intermediate results
+            if results:
+                results_df = pd.DataFrame(results)
+                results_df_sorted = results_df.sort_values('id')
+                results_df_sorted.to_csv(output_file, index=False)
+                self.update_progress()
 
-        # Save results
+            # Small delay between batches
+            if batch_num < total_batches:
+                self.main_window.log_message(f"Waiting 2 seconds before next batch...")
+                time.sleep(2)
+
+        # Final save and summary
         if results:
             results_df = pd.DataFrame(results)
-            results_df.to_csv(output_file, index=False)
-            self.main_window.log_message(f"Saved {len(results)} translations to {output_file}")
-
-            # Sort by ID
             results_df_sorted = results_df.sort_values('id')
             results_df_sorted.to_csv(output_file, index=False)
-            self.main_window.log_message("Output file sorted by ID")
 
-    def get_random_api_key(self):
-        """Get a random API key from the available keys"""
-        available_keys = [key for key in self.current_api_keys if key not in self.failed_keys]
-        if available_keys:
-            return random.choice(available_keys)
-        return None
+            completed_count = len([r for r in results if r['status'] == 'completed'])
+            failed_count = len([r for r in results if r['status'] == 'failed'])
 
-    def call_gemini_api(self, prompt, model_name, config):
-        """Call Google Gemini API"""
-        api_key = self.get_random_api_key()
-        if not api_key:
-            self.main_window.log_message("No available API keys for Gemini")
-            return None
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-
-        payload = {
-            "contents": [{
-                "parts": [{"text": prompt}]
-            }],
-            "generationConfig": {
-                "temperature": config.get('temperature', 1.0),
-                "maxOutputTokens": config.get('max_tokens', 8192),
-                "topP": config.get('top_p', 0.95),
-                "topK": config.get('top_k', 40)
-            }
-        }
-
-        try:
-            response = requests.post(url, json=payload, timeout=30)
-            if response.status_code == 200:
-                result = response.json()
-                return result['candidates'][0]['content']['parts'][0]['text']
-            else:
-                self.main_window.log_message(f"Gemini API error: {response.status_code}")
-                if response.status_code in [401, 403, 429]:
-                    self.failed_keys.add(api_key)
-        except Exception as e:
-            self.main_window.log_message(f"Gemini API exception: {e}")
-
-        return None
-
-    def call_openai_api(self, prompt, model_name, config):
-        """Call OpenAI ChatGPT API"""
-        api_key = self.get_random_api_key()
-        if not api_key:
-            self.main_window.log_message("No available API keys for ChatGPT")
-            return None
-
-        url = "https://api.openai.com/v1/chat/completions"
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": config.get('max_tokens', 4096),
-            "temperature": config.get('temperature', 1.0),
-            "top_p": config.get('top_p', 1.0)
-        }
-
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
-            if response.status_code == 200:
-                result = response.json()
-                return result['choices'][0]['message']['content']
-            else:
-                self.main_window.log_message(f"ChatGPT API error: {response.status_code}")
-                if response.status_code in [401, 403, 429]:
-                    self.failed_keys.add(api_key)
-        except Exception as e:
-            self.main_window.log_message(f"ChatGPT API exception: {e}")
-
-        return None
-
-    def call_claude_api(self, prompt, model_name, config):
-        """Call Anthropic Claude API"""
-        api_key = self.get_random_api_key()
-        if not api_key:
-            self.main_window.log_message("No available API keys for Claude")
-            return None
-
-        url = "https://api.anthropic.com/v1/messages"
-
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": config.get('max_tokens', 4096),
-            "temperature": config.get('temperature', 1.0),
-            "top_p": config.get('top_p', 1.0)
-        }
-
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
-            if response.status_code == 200:
-                result = response.json()
-                return result['content'][0]['text']
-            else:
-                self.main_window.log_message(f"Claude API error: {response.status_code}")
-                if response.status_code in [401, 403, 429]:
-                    self.failed_keys.add(api_key)
-        except Exception as e:
-            self.main_window.log_message(f"Claude API exception: {e}")
-
-        return None
-
-    def call_grok_api(self, prompt, model_name, config):
-        """Call xAI Grok API"""
-        api_key = self.get_random_api_key()
-        if not api_key:
-            self.main_window.log_message("No available API keys for Grok")
-            return None
-
-        url = "https://api.x.ai/v1/chat/completions"
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": config.get('max_tokens', 4096),
-            "temperature": config.get('temperature', 1.0),
-            "top_p": config.get('top_p', 1.0)
-        }
-
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
-            if response.status_code == 200:
-                result = response.json()
-                return result['choices'][0]['message']['content']
-            else:
-                self.main_window.log_message(f"Grok API error: {response.status_code}")
-                if response.status_code in [401, 403, 429]:
-                    self.failed_keys.add(api_key)
-        except Exception as e:
-            self.main_window.log_message(f"Grok API exception: {e}")
-
-        return None
-
-    def call_perplexity_api(self, prompt, model_name, config):
-        """Call Perplexity API"""
-        api_key = self.get_random_api_key()
-        if not api_key:
-            self.main_window.log_message("No available API keys for Perplexity")
-            return None
-
-        url = "https://api.perplexity.ai/chat/completions"
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": config.get('max_tokens', 4096),
-            "temperature": config.get('temperature', 1.0),
-            "top_p": config.get('top_p', 1.0)
-        }
-
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
-            if response.status_code == 200:
-                result = response.json()
-                return result['choices'][0]['message']['content']
-            else:
-                self.main_window.log_message(f"Perplexity API error: {response.status_code}")
-                if response.status_code in [401, 403, 429]:
-                    self.failed_keys.add(api_key)
-        except Exception as e:
-            self.main_window.log_message(f"Perplexity API exception: {e}")
-
-        return None
+            self.main_window.log_message(f"Translation completed!")
+            self.main_window.log_message(f"Total: {len(results)} rows processed")
+            self.main_window.log_message(f"Successful: {completed_count} rows")
+            self.main_window.log_message(f"Failed: {failed_count} rows")
+            self.main_window.log_message(f"Output saved to: {output_file}")
+        else:
+            self.main_window.log_message("No results to save")
 
     def parse_numbered_text(self, text, expected_count):
         """Parse numbered text into list of translations"""

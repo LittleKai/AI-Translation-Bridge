@@ -10,9 +10,8 @@ from gui.components.status_section import StatusSection
 from gui.components.log_section import LogSection
 from gui.tabs.translation_tab import TranslationTab
 from gui.tabs.processing_tab import ProcessingTab
-from gui.dialogs.prompt_dialog import PromptDialog
-from key_validator import validate_application_key
 from helper.translation_processor import TranslationProcessor
+from gui.bot_controller import BotController
 
 
 class AITranslationBridgeGUI:
@@ -34,6 +33,7 @@ class AITranslationBridgeGUI:
         # Initialize managers
         self.window_manager = WindowManager(self)
         self.translation_processor = TranslationProcessor(self)
+        self.bot_controller = BotController(self)
 
         # Load initial settings (including app_key)
         self.window_manager.load_initial_settings()
@@ -155,31 +155,56 @@ class AITranslationBridgeGUI:
             self.log_message(f"Warning: Could not setup keyboard shortcuts: {e}")
 
     def start_bot(self):
-        """Start bot and toggle compact mode"""
+        """Start bot based on selected service type"""
         if not self.is_running and self.key_valid:
             self.is_running = True
-            self.translation_processor.is_running = True
+
+            # Get selected service
+            processing_settings = self.processing_tab.get_settings()
+            ai_service = processing_settings.get('ai_service')
+
             self.start_button.config(state="disabled")
             self.stop_button.config(state="normal")
-            self.status_section.set_bot_status("Running", "green")
-            self.log_message("Bot started")
+            self.log_message(f"Starting with service: {ai_service}")
 
             # Enter compact mode
             if not self.compact_mode:
                 self.toggle_compact_mode()
 
-            # Start translation processing in a separate thread
-            processing_thread = threading.Thread(
-                target=self.translation_processor.start_processing,
-                daemon=True
-            )
-            processing_thread.start()
+            # Check if it's an API service or web interface service
+            if "API" in ai_service:
+                # API mode - use translation processor
+                self.status_section.set_bot_status("Processing...", "green")
+                self.translation_processor.is_running = True
+
+                # Start translation processing in a separate thread
+                processing_thread = threading.Thread(
+                    target=self.translation_processor.start_processing,
+                    daemon=True
+                )
+                processing_thread.start()
+            else:
+                # Web interface mode - use bot controller
+                self.status_section.set_bot_status("Running Web Bot", "green")
+                self.bot_controller.running = True
+
+                # Start bot controller for web interface
+                bot_thread = threading.Thread(
+                    target=self.bot_controller.run_web_service,
+                    args=(ai_service,),
+                    daemon=True
+                )
+                bot_thread.start()
 
     def stop_bot(self):
         """Stop bot and exit compact mode"""
         if self.is_running:
             self.is_running = False
+
+            # Stop both processors
             self.translation_processor.is_running = False
+            self.bot_controller.running = False
+
             self.start_button.config(state="normal")
             self.stop_button.config(state="disabled")
             self.status_section.set_bot_status("Stopped", "red")

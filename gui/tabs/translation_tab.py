@@ -22,7 +22,6 @@ class TranslationTab:
     def init_variables(self):
         """Initialize tab variables"""
         self.input_file = tk.StringVar(value="")
-        self.output_file = tk.StringVar(value="")
         self.start_id = tk.StringVar(value="1")
         self.stop_id = tk.StringVar(value="100")
 
@@ -34,7 +33,6 @@ class TranslationTab:
         """Bind variable changes to auto-save"""
         variables = [
             self.input_file,
-            self.output_file,
             self.start_id,
             self.stop_id,
             self.output_directory
@@ -52,8 +50,8 @@ class TranslationTab:
         # Input file section
         self.create_input_section(content_frame, row=0)
 
-        # Output file section
-        self.create_output_section(content_frame, row=1)
+        # Output info section
+        self.create_output_info_section(content_frame, row=1)
 
         # ID range section
         self.create_id_range_section(content_frame, row=2)
@@ -93,26 +91,29 @@ class TranslationTab:
         input_label.bind("<Enter>", show_full_path)
         input_label.bind("<Leave>", hide_full_path)
 
-    def create_output_section(self, parent, row):
-        """Create output file selection section"""
-        output_frame = ttk.LabelFrame(parent, text="Output File", padding="10")
+    def create_output_info_section(self, parent, row):
+        """Create output information section"""
+        output_frame = ttk.LabelFrame(parent, text="Output Information", padding="10")
         output_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         output_frame.columnconfigure(1, weight=1)
 
-        ttk.Button(output_frame, text="Select Output CSV",
-                   command=self.select_output_file).grid(row=0, column=0, padx=(0, 10))
+        # Info about automatic output naming
+        info_text = "Output file will be automatically named based on:\n" \
+                    "• Input filename\n" \
+                    "• Detected language (from filename)\n" \
+                    "• Selected prompt type\n" \
+                    "Format: [filename]_[LANG]_[prompt]_translated.csv"
 
-        # Display only filename in label, but store full path
-        self.output_label_var = tk.StringVar()
-        output_label = ttk.Label(output_frame, textvariable=self.output_label_var)
-        output_label.grid(row=0, column=1, sticky=(tk.W, tk.E))
+        info_label = ttk.Label(output_frame, text=info_text,
+                               font=("Arial", 9), foreground="gray", justify=tk.LEFT)
+        info_label.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 5))
 
         # Default directory info
-        ttk.Label(output_frame, text="Default directory:",
-                  font=("Arial", 9)).grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        ttk.Label(output_frame, text="Output directory:",
+                  font=("Arial", 9, "bold")).grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
 
         ttk.Label(output_frame, textvariable=self.output_directory,
-                  font=("Arial", 9), foreground="gray").grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+                  font=("Arial", 9), foreground="blue").grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
 
     def create_id_range_section(self, parent, row):
         """Create ID range section"""
@@ -150,38 +151,13 @@ class TranslationTab:
             if lang:
                 self.main_window.log_message(f"Detected language: {lang}")
 
-    def select_output_file(self):
-        """Select output CSV file"""
-        # Ensure default directory exists
-        os.makedirs(self.output_directory.get(), exist_ok=True)
-
-        filename = filedialog.asksaveasfilename(
-            title="Select Output CSV",
-            initialdir=self.output_directory.get(),
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
-        )
-
-        if filename:
-            # Store the full path
-            self.output_file.set(filename)
-            # Display only basename in label
-            self.output_label_var.set(os.path.basename(filename))
-            self.main_window.log_message(f"Output file selected: {os.path.basename(filename)}")
-
     def detect_language(self, filepath):
-        """Detect language from file path"""
-        import re
-        # Look for language pattern in path
-        lang_match = re.search(r'Raw_(JP|EN|KR|CN|VI)', filepath)
-
-        if lang_match:
-            return lang_match.group(1)
-
-        # Try to detect from filename
+        """Detect language from filename"""
         filename = os.path.basename(filepath)
+
+        # Look for language codes in filename
         for lang in ['JP', 'EN', 'KR', 'CN', 'VI']:
-            if lang.lower() in filename.lower():
+            if lang in filename.upper():
                 return lang
 
         return None
@@ -190,7 +166,7 @@ class TranslationTab:
         """Get current tab settings"""
         return {
             'input_file': self.input_file.get(),  # This now contains full path
-            'output_file': self.output_file.get(),  # This now contains full path
+            'output_file': '',  # No longer used
             'start_id': self.start_id.get(),
             'stop_id': self.stop_id.get(),
             'output_directory': self.output_directory.get()
@@ -204,12 +180,6 @@ class TranslationTab:
                 # Update display label
                 if settings['input_file']:
                     self.input_label_var.set(os.path.basename(settings['input_file']))
-
-            if 'output_file' in settings:
-                self.output_file.set(settings['output_file'])
-                # Update display label
-                if settings['output_file']:
-                    self.output_label_var.set(os.path.basename(settings['output_file']))
 
             if 'start_id' in settings:
                 self.start_id.set(settings['start_id'])

@@ -1,0 +1,84 @@
+import base64
+import json
+import os
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+
+class KeyEncryption:
+    """Handle encryption and decryption of API keys"""
+    
+    def __init__(self):
+        self.key_file = ".key_store"
+        self.cipher = self._get_or_create_cipher()
+    
+    def _get_or_create_cipher(self):
+        """Get existing cipher or create new one"""
+        if os.path.exists(self.key_file):
+            with open(self.key_file, 'rb') as f:
+                key = f.read()
+        else:
+            # Generate key from machine-specific data
+            key = self._generate_key()
+            with open(self.key_file, 'wb') as f:
+                f.write(key)
+            # Hide the key file on Windows
+            if os.name == 'nt':
+                import ctypes
+                ctypes.windll.kernel32.SetFileAttributesW(self.key_file, 0x02)
+        
+        return Fernet(key)
+    
+    def _generate_key(self):
+        """Generate encryption key based on machine ID"""
+        import platform
+        import hashlib
+        
+        # Get machine-specific identifier
+        machine_id = f"{platform.node()}_{platform.machine()}_{platform.processor()}"
+        
+        # Use PBKDF2 to derive a key
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b'AITranslationBridge2024',
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(machine_id.encode()))
+        return key
+    
+    def encrypt_key(self, api_key):
+        """Encrypt a single API key"""
+        if not api_key:
+            return ""
+        try:
+            encrypted = self.cipher.encrypt(api_key.encode())
+            return base64.urlsafe_b64encode(encrypted).decode()
+        except Exception:
+            return api_key  # Return original if encryption fails
+    
+    def decrypt_key(self, encrypted_key):
+        """Decrypt a single API key"""
+        if not encrypted_key:
+            return ""
+        try:
+            decoded = base64.urlsafe_b64decode(encrypted_key.encode())
+            decrypted = self.cipher.decrypt(decoded)
+            return decrypted.decode()
+        except Exception:
+            return encrypted_key  # Return as-is if not encrypted
+    
+    def encrypt_keys_list(self, keys_list):
+        """Encrypt a list of API keys"""
+        return [self.encrypt_key(key) for key in keys_list]
+    
+    def decrypt_keys_list(self, encrypted_list):
+        """Decrypt a list of API keys"""
+        return [self.decrypt_key(key) for key in encrypted_list]
+    
+    def mask_key_for_display(self, api_key):
+        """Mask API key for display (show first 6 and last 4 characters)"""
+        if len(api_key) <= 10:
+            return "*" * len(api_key)
+        return f"{api_key[:6]}{'*' * (len(api_key) - 10)}{api_key[-4:]}"
