@@ -4,10 +4,8 @@ GUI Tabs Package
 Contains tabbed interface components including Team Trials
 """
 
-from .processing_tab import ProcessingTab
 from .translation_tab import TranslationTab
+from .processing_tab import ProcessingTab
+from .converter_tab import ConverterTab
 
-__all__ = [
-    'ProcessingTab',
-    'TranslationTab'
-]
+__all__ = ['TranslationTab', 'ProcessingTab', 'ConverterTab']

@@ -10,6 +10,8 @@ from gui.components.status_section import StatusSection
 from gui.components.log_section import LogSection
 from gui.tabs.translation_tab import TranslationTab
 from gui.tabs.processing_tab import ProcessingTab
+from gui.tabs.converter_tab import ConverterTab
+
 from helper.translation_processor import TranslationProcessor
 from gui.bot_controller import BotController
 
@@ -113,6 +115,11 @@ class AITranslationBridgeGUI:
         processing_frame = ttk.Frame(self.notebook)
         self.notebook.add(processing_frame, text="Processing")
         self.processing_tab = ProcessingTab(processing_frame, self)
+
+        # Converter tab (NEW)
+        converter_frame = ttk.Frame(self.notebook)
+        self.notebook.add(converter_frame, text="Converter")
+        self.converter_tab = ConverterTab(converter_frame, self)
 
     def create_control_section(self, parent, row):
         """Create bot control buttons section"""
@@ -369,7 +376,8 @@ class AITranslationBridgeGUI:
         """Get current settings from all tabs"""
         return {
             'translation': self.translation_tab.get_settings(),
-            'processing': self.processing_tab.get_settings()
+            'processing': self.processing_tab.get_settings(),
+            'converter': self.converter_tab.get_settings()
         }
 
     def run(self):
