@@ -4,7 +4,6 @@ import threading
 from datetime import datetime
 import os
 import json
-from gui.bot_controller import BotController
 
 from gui.window_manager import WindowManager
 from gui.components.status_section import StatusSection
@@ -13,6 +12,7 @@ from gui.tabs.translation_tab import TranslationTab
 from gui.tabs.processing_tab import ProcessingTab
 from gui.dialogs.prompt_dialog import PromptDialog
 from key_validator import validate_application_key
+from helper.translation_processor import TranslationProcessor
 
 
 class AITranslationBridgeGUI:
@@ -25,9 +25,6 @@ class AITranslationBridgeGUI:
         # Initialize variables
         self.init_variables()
 
-        # Initialize bot controller
-        self.bot_controller = BotController(self)
-
         # Compact mode flag - Initialize early
         self.compact_mode = False
 
@@ -36,6 +33,7 @@ class AITranslationBridgeGUI:
 
         # Initialize managers
         self.window_manager = WindowManager(self)
+        self.translation_processor = TranslationProcessor(self)
 
         # Load initial settings (including app_key)
         self.window_manager.load_initial_settings()
@@ -160,29 +158,32 @@ class AITranslationBridgeGUI:
         """Start bot and toggle compact mode"""
         if not self.is_running and self.key_valid:
             self.is_running = True
+            self.translation_processor.is_running = True
             self.start_button.config(state="disabled")
             self.stop_button.config(state="normal")
             self.status_section.set_bot_status("Running", "green")
             self.log_message("Bot started")
 
-            # Start bot controller
-            self.bot_controller.start()
-
             # Enter compact mode
             if not self.compact_mode:
                 self.toggle_compact_mode()
+
+            # Start translation processing in a separate thread
+            processing_thread = threading.Thread(
+                target=self.translation_processor.start_processing,
+                daemon=True
+            )
+            processing_thread.start()
 
     def stop_bot(self):
         """Stop bot and exit compact mode"""
         if self.is_running:
             self.is_running = False
+            self.translation_processor.is_running = False
             self.start_button.config(state="normal")
             self.stop_button.config(state="disabled")
             self.status_section.set_bot_status("Stopped", "red")
             self.log_message("Bot stopped")
-
-            # Stop bot controller
-            self.bot_controller.stop()
 
             # Exit compact mode
             if self.compact_mode:

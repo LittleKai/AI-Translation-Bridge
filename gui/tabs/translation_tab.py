@@ -1,4 +1,3 @@
-
 import tkinter as tk
 from tkinter import ttk, filedialog
 import os
@@ -68,8 +67,31 @@ class TranslationTab:
         ttk.Button(input_frame, text="Select Input CSV",
                    command=self.select_input_file).grid(row=0, column=0, padx=(0, 10))
 
-        input_label = ttk.Label(input_frame, textvariable=self.input_file)
+        # Display only filename in label, but store full path
+        self.input_label_var = tk.StringVar()
+        input_label = ttk.Label(input_frame, textvariable=self.input_label_var)
         input_label.grid(row=0, column=1, sticky=(tk.W, tk.E))
+
+        # Show full path on hover
+        def show_full_path(event):
+            if self.input_file.get():
+                input_label.config(cursor="hand2")
+                # Create tooltip
+                tooltip = tk.Toplevel(input_label)
+                tooltip.wm_overrideredirect(True)
+                tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+                label = ttk.Label(tooltip, text=self.input_file.get(),
+                                  background="lightyellow", relief="solid", borderwidth=1)
+                label.pack()
+                input_label.tooltip = tooltip
+
+        def hide_full_path(event):
+            input_label.config(cursor="")
+            if hasattr(input_label, 'tooltip'):
+                input_label.tooltip.destroy()
+
+        input_label.bind("<Enter>", show_full_path)
+        input_label.bind("<Leave>", hide_full_path)
 
     def create_output_section(self, parent, row):
         """Create output file selection section"""
@@ -80,7 +102,9 @@ class TranslationTab:
         ttk.Button(output_frame, text="Select Output CSV",
                    command=self.select_output_file).grid(row=0, column=0, padx=(0, 10))
 
-        output_label = ttk.Label(output_frame, textvariable=self.output_file)
+        # Display only filename in label, but store full path
+        self.output_label_var = tk.StringVar()
+        output_label = ttk.Label(output_frame, textvariable=self.output_label_var)
         output_label.grid(row=0, column=1, sticky=(tk.W, tk.E))
 
         # Default directory info
@@ -115,9 +139,16 @@ class TranslationTab:
         )
 
         if filename:
-            # Only show filename, not full path
-            self.input_file.set(os.path.basename(filename))
+            # Store the full path
+            self.input_file.set(filename)
+            # Display only basename in label
+            self.input_label_var.set(os.path.basename(filename))
             self.main_window.log_message(f"Input file selected: {os.path.basename(filename)}")
+
+            # Detect and log language
+            lang = self.detect_language(filename)
+            if lang:
+                self.main_window.log_message(f"Detected language: {lang}")
 
     def select_output_file(self):
         """Select output CSV file"""
@@ -132,15 +163,34 @@ class TranslationTab:
         )
 
         if filename:
-            # Only show filename, not full path
-            self.output_file.set(os.path.basename(filename))
+            # Store the full path
+            self.output_file.set(filename)
+            # Display only basename in label
+            self.output_label_var.set(os.path.basename(filename))
             self.main_window.log_message(f"Output file selected: {os.path.basename(filename)}")
+
+    def detect_language(self, filepath):
+        """Detect language from file path"""
+        import re
+        # Look for language pattern in path
+        lang_match = re.search(r'Raw_(JP|EN|KR|CN|VI)', filepath)
+
+        if lang_match:
+            return lang_match.group(1)
+
+        # Try to detect from filename
+        filename = os.path.basename(filepath)
+        for lang in ['JP', 'EN', 'KR', 'CN', 'VI']:
+            if lang.lower() in filename.lower():
+                return lang
+
+        return None
 
     def get_settings(self):
         """Get current tab settings"""
         return {
-            'input_file': self.input_file.get(),
-            'output_file': self.output_file.get(),
+            'input_file': self.input_file.get(),  # This now contains full path
+            'output_file': self.output_file.get(),  # This now contains full path
             'start_id': self.start_id.get(),
             'stop_id': self.stop_id.get(),
             'output_directory': self.output_directory.get()
@@ -151,8 +201,16 @@ class TranslationTab:
         try:
             if 'input_file' in settings:
                 self.input_file.set(settings['input_file'])
+                # Update display label
+                if settings['input_file']:
+                    self.input_label_var.set(os.path.basename(settings['input_file']))
+
             if 'output_file' in settings:
                 self.output_file.set(settings['output_file'])
+                # Update display label
+                if settings['output_file']:
+                    self.output_label_var.set(os.path.basename(settings['output_file']))
+
             if 'start_id' in settings:
                 self.start_id.set(settings['start_id'])
             if 'stop_id' in settings:
