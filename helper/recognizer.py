@@ -200,22 +200,23 @@ def find_template_position(template_path, region=None, threshold=0.85, return_ce
     # Get template dimensions
     h, w = template.shape[:2]
 
-    # Calculate position based on return_center flag
-    if return_center:
-      # Return center coordinates
-      center_x = max_loc[0] + w // 2
-      center_y = max_loc[1] + h // 2
-      position = (center_x, center_y)
-    else:
-      # Return top-left coordinates
-      position = max_loc
+    # Calculate absolute coordinates
+    left = max_loc[0] + region_left
+    top = max_loc[1] + region_top
+    right = left + w
+    bottom = top + h
 
-    # Adjust coordinates if region was specified
-    adjusted_x = position[0] + region_left
-    adjusted_y = position[1] + region_top
-    return (adjusted_x, adjusted_y)
+    # Calculate center coordinates
+    center_x = left + w // 2
+    center_y = top + h // 2
+
+    # Return format: (left, top, right, bottom, center_x, center_y)
+    # This provides all 4 corner points and the center point
+    if return_center:
+      return (left, top, right, bottom, center_x, center_y)
+    else:
+      return (left, top, right, bottom)
 
   except Exception as e:
     print(f"[ERROR] Unexpected error in find_template_position: {e}")
     return None
-

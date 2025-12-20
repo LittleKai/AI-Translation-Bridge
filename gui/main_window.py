@@ -1,10 +1,10 @@
-
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
 from datetime import datetime
 import os
 import json
+from gui.bot_controller import BotController
 
 from gui.window_manager import WindowManager
 from gui.components.status_section import StatusSection
@@ -24,6 +24,9 @@ class AITranslationBridgeGUI:
 
         # Initialize variables
         self.init_variables()
+
+        # Initialize bot controller
+        self.bot_controller = BotController(self)
 
         # Compact mode flag - Initialize early
         self.compact_mode = False
@@ -162,6 +165,9 @@ class AITranslationBridgeGUI:
             self.status_section.set_bot_status("Running", "green")
             self.log_message("Bot started")
 
+            # Start bot controller
+            self.bot_controller.start()
+
             # Enter compact mode
             if not self.compact_mode:
                 self.toggle_compact_mode()
@@ -174,6 +180,9 @@ class AITranslationBridgeGUI:
             self.stop_button.config(state="disabled")
             self.status_section.set_bot_status("Stopped", "red")
             self.log_message("Bot stopped")
+
+            # Stop bot controller
+            self.bot_controller.stop()
 
             # Exit compact mode
             if self.compact_mode:
