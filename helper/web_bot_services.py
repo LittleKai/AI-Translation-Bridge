@@ -92,10 +92,11 @@ class WebBotServices:
                     is_processing = False
 
             screen_width, screen_height = pyautogui.size()
-            pyautogui.click(screen_width // 2, screen_height // 2)
-            time.sleep(0.5)
-            pyautogui.press('end')
-            time.sleep(1.0)
+            for i in range(2):
+                pyautogui.click(screen_width // 2, screen_height // 2)
+                time.sleep(0.5)
+                pyautogui.press('end')
+                time.sleep(0.5)
 
             # Look for action icons to find copy button
             action_icons = find_template_position(
@@ -153,23 +154,24 @@ class WebBotServices:
 
             # Find chat option region at top of screen
             screen_width, _ = pyautogui.size()
-            top_region = (0, 0, screen_width, 300)  # Top 300px of screen
+            top_region = (screen_width/2, 0, screen_width, 300)  # Top 300px of screen
 
-            chat_option = find_template_position(
-                "assets/Perplexity/chat_option_region.png",
+            more_clicked = find_and_click(
+                "assets/Perplexity/more_btn.png",
                 region=top_region,
-                threshold=0.85,
-                return_center=False
+                click=True,
+                max_attempts=3,
+                delay_between=1.0,
+                confidence=0.85,
+                log_func=self.main_window.log_message
             )
 
-            if chat_option:
-                # Click more button in the found region
-                left, top, right, bottom = chat_option
-                option_region = (left, top, right - left, bottom - top)
+            if more_clicked:
+                time.sleep(0.5)
 
-                more_clicked = find_and_click(
-                    "assets/Perplexity/more_btn.png",
-                    region=option_region,
+                # Click delete button
+                delete_clicked = find_and_click(
+                    "assets/Perplexity/delete_btn.png",
                     click=True,
                     max_attempts=3,
                     delay_between=1.0,
@@ -177,12 +179,12 @@ class WebBotServices:
                     log_func=self.main_window.log_message
                 )
 
-                if more_clicked:
+                if delete_clicked:
                     time.sleep(0.5)
 
-                    # Click delete button
-                    delete_clicked = find_and_click(
-                        "assets/Perplexity/delete_btn.png",
+                    # Click confirm button
+                    confirm_clicked = find_and_click(
+                        "assets/Perplexity/confirm_btn.png",
                         click=True,
                         max_attempts=3,
                         delay_between=1.0,
@@ -190,29 +192,14 @@ class WebBotServices:
                         log_func=self.main_window.log_message
                     )
 
-                    if delete_clicked:
-                        time.sleep(0.5)
-
-                        # Click confirm button
-                        confirm_clicked = find_and_click(
-                            "assets/Perplexity/confirm_btn.png",
-                            click=True,
-                            max_attempts=3,
-                            delay_between=1.0,
-                            confidence=0.85,
-                            log_func=self.main_window.log_message
-                        )
-
-                        if confirm_clicked:
-                            self.main_window.log_message("Chat deleted successfully")
-                        else:
-                            self.main_window.log_message("Failed to confirm deletion")
+                    if confirm_clicked:
+                        self.main_window.log_message("Chat deleted successfully")
                     else:
-                        self.main_window.log_message("Failed to click delete button")
+                        self.main_window.log_message("Failed to confirm deletion")
                 else:
-                    self.main_window.log_message("Failed to click more button")
+                    self.main_window.log_message("Failed to click delete button")
             else:
-                self.main_window.log_message("Chat option region not found")
+                self.main_window.log_message("Failed to click more button")
 
         except Exception as e:
             self.main_window.log_message(f"Cleanup error: {str(e)}")
