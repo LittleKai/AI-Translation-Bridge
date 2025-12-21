@@ -3,6 +3,8 @@ pass_link.txt
 window_settings.json
 AI_Bridge.iml
 .key_store
+bot_settings.json
+settings.json
 
 # Ignore specific folders
 0.temp/

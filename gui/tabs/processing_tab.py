@@ -35,7 +35,8 @@ class ProcessingTab:
         # API configuration
         self.api_configs = {
             'Gemini API': {
-                'models': ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview'],
+                'models': ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro',
+                           'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview'],
                 'default_model': 'gemini-2.5-flash-lite',
                 'keys': [],
                 'max_tokens': 8192,
@@ -45,8 +46,9 @@ class ProcessingTab:
                 'help_url': 'https://ai.google.dev/models/gemini'
             },
             'ChatGPT API': {
-                'models': ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-                'default_model': 'gpt-3.5-turbo',
+                'models': ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-5.1',
+                           'gpt-5.2'],
+                'default_model': 'gpt-4o-mini',
                 'keys': [],
                 'max_tokens': 4096,
                 'temperature': 0.7,
@@ -55,7 +57,8 @@ class ProcessingTab:
                 'help_url': 'https://platform.openai.com/docs/models'
             },
             'Claude API': {
-                'models': ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+                'models': ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229',
+                           'claude-haiku-4-5-20251001','claude-sonnet-4-5-20250929','anthropic.claude-opus-4-5-20251101-v1:0'],
                 'default_model': 'claude-3-5-sonnet-20241022',
                 'keys': [],
                 'max_tokens': 4096,
@@ -65,24 +68,14 @@ class ProcessingTab:
                 'help_url': 'https://platform.claude.com/docs/en/about-claude/models/overview'
             },
             'Grok API': {
-                'models': ['grok-2-1212', 'grok-2-vision-1212', 'grok-beta'],
-                'default_model': 'grok-2-1212',
+                'models': ['grok-3-mini', 'grok-4-fast-non-reasoning', 'grok-4-fast-reasoning','grok-4-1-fast-non-reasoning', 'grok-4-1-fast-reasoning'],
+                'default_model': 'grok-3-mini',
                 'keys': [],
                 'max_tokens': 4096,
                 'temperature': 0.7,
                 'top_p': 0.95,
                 'top_k': 40,
                 'help_url': 'https://docs.x.ai/docs/models'
-            },
-            'Perplexity API': {
-                'models': ['llama-3.1-sonar-small-128k-online', 'llama-3.1-sonar-large-128k-online'],
-                'default_model': 'llama-3.1-sonar-small-128k-online',
-                'keys': [],
-                'max_tokens': 4096,
-                'temperature': 0.7,
-                'top_p': 0.95,
-                'top_k': 40,
-                'help_url': 'https://docs.perplexity.ai/getting-started/models'
             }
         }
 
@@ -180,7 +173,8 @@ class ProcessingTab:
         # Service selection row
         ttk.Label(ai_frame, text="Select Service:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
 
-        services = ["Gemini", "ChatGPT", "Claude", "Perplexity", "Grok", "Gemini API", "ChatGPT API", "Claude API", "Grok API", "Perplexity API"]
+        services = ["Gemini", "ChatGPT", "Claude", "Perplexity", "Grok", "Gemini API", "ChatGPT API", "Claude API",
+                    "Grok API"]
         self.ai_dropdown = ttk.Combobox(
             ai_frame,
             textvariable=self.ai_service,

@@ -1,7 +1,8 @@
 import threading
+import pandas as pd
+import os
 import time
-import pyautogui
-from helper.recognizer import find_template_position
+from helper.web_bot_services import WebBotServices
 
 
 class BotController:
@@ -11,6 +12,7 @@ class BotController:
         self.main_window = main_window
         self.running = False
         self.bot_thread = None
+        self.web_bot_services = WebBotServices(main_window)
 
     def start(self):
         """Start the bot in a separate thread"""
@@ -22,154 +24,182 @@ class BotController:
     def stop(self):
         """Stop the bot"""
         self.running = False
+        self.web_bot_services.running = False
         if self.bot_thread and self.bot_thread.is_alive():
             self.bot_thread.join(timeout=2)
 
     def run_web_service(self, service_name):
-        """Run bot for specific web service"""
+        """Run bot for specific web service with batch processing"""
         self.main_window.log_message(f"Starting web automation for: {service_name}")
 
-        if service_name == "Perplexity":
-            self.run_perplexity_bot()
-        elif service_name == "Gemini":
-            self.run_gemini_bot()
-        elif service_name == "ChatGPT":
-            self.run_chatgpt_bot()
-        elif service_name == "Claude":
-            self.run_claude_bot()
-        elif service_name == "Grok":
-            self.run_grok_bot()
-        else:
-            self.main_window.log_message(f"Web automation for {service_name} not yet implemented")
-            self.main_window.root.after(0, self.main_window.stop_bot)
-
-    def run_perplexity_bot(self):
-        """Run bot specifically for Perplexity web interface"""
         try:
-            # Find text input box
-            self.main_window.log_message("Searching for Perplexity input box...")
+            # Get settings from tabs
+            translation_settings = self.main_window.translation_tab.get_settings()
+            processing_settings = self.main_window.processing_tab.get_settings()
 
-            # Get all coordinates including center
-            box_coords = find_template_position(
-                "assets/Perplexity/text_input_box.png",
-                threshold=0.85,
-                return_center=True
-            )
-
-            if not box_coords:
-                self.main_window.log_message("Error: Perplexity input box not found!")
-                self.main_window.log_message("Make sure Perplexity website is open and visible")
+            # Get input file
+            input_file = translation_settings.get('input_file')
+            if not input_file or not os.path.exists(input_file):
+                self.main_window.log_message("Error: No valid input file selected")
                 self.main_window.root.after(0, self.main_window.stop_bot)
                 return
 
-            # Extract coordinates
-            left, top, right, bottom, center_x, center_y = box_coords
+            # Load translation prompt
+            prompt_type = processing_settings.get('prompt_type')
+            prompt = self.load_translation_prompt(input_file, prompt_type)
+            if not prompt:
+                self.main_window.log_message("Error: Failed to load translation prompt")
+                self.main_window.root.after(0, self.main_window.stop_bot)
+                return
 
-            # Calculate click position
-            click_x = center_x
-            click_y = center_y - 20
+            # Read input CSV
+            df = pd.read_csv(input_file)
+            if 'text' not in df.columns:
+                self.main_window.log_message("Error: CSV file must have 'text' column")
+                self.main_window.root.after(0, self.main_window.stop_bot)
+                return
 
-            self.main_window.log_message(f"Input box found at: ({center_x}, {center_y})")
-            self.main_window.log_message(f"Clicking at ({click_x}, {click_y})")
+            # Get batch settings
+            batch_size = int(processing_settings.get('batch_size', 10))
 
-            # Click on the input box
-            pyautogui.click(click_x, click_y)
-            time.sleep(0.5)
+            # Process only first batch for testing
+            if len(df) > 0:
+                batch = df.iloc[0:min(batch_size, len(df))]
+                batch_ids = batch['id'].tolist()
+                self.main_window.log_message(f"Processing test batch (IDs: {batch_ids[0]}-{batch_ids[-1]}, {len(batch)} rows)")
 
-            # Type test message
-            test_message = "test translation"
-            pyautogui.typewrite(test_message)
-            self.main_window.log_message(f"Typed '{test_message}' in input box")
-            time.sleep(0.5)
+                # Create batch text
+                batch_text = "\n".join([f"{j+1}. {row['text']}" for j, (_, row) in enumerate(batch.iterrows())])
 
-            # Find send button
-            self.main_window.log_message("Searching for send button...")
-            send_btn_coords = find_template_position(
-                "assets/Perplexity/send_btn.png",
-                threshold=0.85,
-                return_center=True
-            )
+                # Run appropriate bot service
+                if service_name == "Perplexity":
+                    translations, error = self.web_bot_services.run_perplexity_bot(prompt, batch_text, len(batch))
 
-            if send_btn_coords:
-                left, top, right, bottom, center_x, center_y = send_btn_coords
-                self.main_window.log_message(f"Send button found at: ({center_x}, {center_y})")
-                pyautogui.click(center_x, center_y)
-                self.main_window.log_message("Clicked send button")
-            else:
-                self.main_window.log_message("Send button not found, trying Enter key")
-                pyautogui.press('enter')
+                    if translations:
+                        self.main_window.log_message(f"Successfully processed {len(translations)} translations")
+                        # Process results similar to API
+                        self.process_batch_results(batch, translations, input_file, prompt_type)
+                    else:
+                        self.main_window.log_message(f"Failed to get translations: {error}")
 
-            self.main_window.log_message("Perplexity bot task completed")
-
-        except Exception as e:
-            self.main_window.log_message(f"Perplexity bot error: {str(e)}")
-            self.main_window.root.after(0, self.main_window.stop_bot)
-
-    def run_gemini_bot(self):
-        """Run bot specifically for Gemini web interface"""
-        try:
-            self.main_window.log_message("Starting Gemini web automation...")
-            self.main_window.log_message("Gemini web automation is under development")
-
-            # TODO: Implement Gemini web interface automation
-            # This would involve:
-            # 1. Finding Gemini input field
-            # 2. Typing translation prompt
-            # 3. Sending the prompt
-            # 4. Extracting the response
-
-            self.main_window.log_message("Gemini web automation not yet fully implemented")
+                elif service_name == "Gemini":
+                    translations, error = self.web_bot_services.run_gemini_bot()
+                elif service_name == "ChatGPT":
+                    translations, error = self.web_bot_services.run_chatgpt_bot()
+                elif service_name == "Claude":
+                    translations, error = self.web_bot_services.run_claude_bot()
+                elif service_name == "Grok":
+                    translations, error = self.web_bot_services.run_grok_bot()
+                else:
+                    self.main_window.log_message(f"Web automation for {service_name} not yet implemented")
 
         except Exception as e:
-            self.main_window.log_message(f"Gemini bot error: {str(e)}")
+            self.main_window.log_message(f"Web service error: {str(e)}")
         finally:
             self.main_window.root.after(0, self.main_window.stop_bot)
 
-    def run_chatgpt_bot(self):
-        """Run bot specifically for ChatGPT web interface"""
+    def load_translation_prompt(self, input_path, prompt_type):
+        """Load translation prompt based on detected language and prompt type"""
+        input_filename = os.path.basename(input_path)
+
+        # Detect source language from filename
+        source_lang = None
+        for lang in ['JP', 'EN', 'KR', 'CN', 'VI']:
+            if lang in input_filename.upper():
+                source_lang = lang
+                break
+
+        if not source_lang:
+            self.main_window.log_message("Error: Could not detect source language from filename")
+            return None
+
         try:
-            self.main_window.log_message("Starting ChatGPT web automation...")
-            self.main_window.log_message("ChatGPT web automation is under development")
+            prompt_file = "assets/translate_prompt.xlsx"
+            if not os.path.exists(prompt_file):
+                self.main_window.log_message("Error: Prompt file not found")
+                return None
 
-            # TODO: Implement ChatGPT web interface automation
+            df = pd.read_excel(prompt_file)
 
-            self.main_window.log_message("ChatGPT web automation not yet fully implemented")
+            if 'type' in df.columns and source_lang in df.columns:
+                prompt_row = df[df['type'] == prompt_type]
+                if not prompt_row.empty:
+                    prompt = prompt_row.iloc[0][source_lang]
+                    if pd.notna(prompt) and prompt:
+                        self.main_window.log_message(f"Loaded prompt for {source_lang}, type: {prompt_type}")
+                        return prompt
+
+            return None
 
         except Exception as e:
-            self.main_window.log_message(f"ChatGPT bot error: {str(e)}")
-        finally:
-            self.main_window.root.after(0, self.main_window.stop_bot)
+            self.main_window.log_message(f"Error loading prompt: {e}")
+            return None
 
-    def run_claude_bot(self):
-        """Run bot specifically for Claude web interface"""
+    def process_batch_results(self, batch, translations, input_file, prompt_type):
+        """Process batch results and save to output file"""
         try:
-            self.main_window.log_message("Starting Claude web automation...")
-            self.main_window.log_message("Claude web automation is under development")
+            # Generate output path
+            output_path = self.generate_output_path(input_file, prompt_type)
+            self.main_window.log_message(f"Saving results to: {output_path}")
 
-            # TODO: Implement Claude web interface automation
+            # Create results
+            results = []
+            for (idx, row), translation in zip(batch.iterrows(), translations):
+                results.append({
+                    'id': row['id'],
+                    'raw': row['text'],
+                    'edit': translation,
+                    'status': 'completed' if translation else 'failed'
+                })
 
-            self.main_window.log_message("Claude web automation not yet fully implemented")
+            # Save to CSV
+            if results:
+                results_df = pd.DataFrame(results)
+                results_df_sorted = results_df.sort_values('id')
+                results_df_sorted.to_csv(output_path, index=False)
+
+                completed_count = len([r for r in results if r['status'] == 'completed'])
+                self.main_window.log_message(f"Batch completed: {completed_count}/{len(results)} successful")
 
         except Exception as e:
-            self.main_window.log_message(f"Claude bot error: {str(e)}")
-        finally:
-            self.main_window.root.after(0, self.main_window.stop_bot)
+            self.main_window.log_message(f"Error processing results: {e}")
 
-    def run_grok_bot(self):
-        """Run bot specifically for Grok web interface"""
-        try:
-            self.main_window.log_message("Starting Grok web automation...")
-            self.main_window.log_message("Grok web automation is under development")
+    def generate_output_path(self, input_path, prompt_type):
+        """Generate output path based on input file name and prompt type"""
+        input_filename = os.path.basename(input_path)
 
-            # TODO: Implement Grok web interface automation
+        # Detect language from filename
+        lang_folder = None
+        for lang in ['JP', 'EN', 'KR', 'CN', 'VI']:
+            if lang in input_filename.upper():
+                lang_folder = lang
+                break
 
-            self.main_window.log_message("Grok web automation not yet fully implemented")
+        if not lang_folder:
+            lang_folder = "Other"
 
-        except Exception as e:
-            self.main_window.log_message(f"Grok bot error: {str(e)}")
-        finally:
-            self.main_window.root.after(0, self.main_window.stop_bot)
+        # Create output filename
+        filename_without_ext, ext = os.path.splitext(input_filename)
+        if prompt_type:
+            output_filename = f"{filename_without_ext}_{lang_folder}_{prompt_type}_translated{ext}"
+        else:
+            output_filename = f"{filename_without_ext}_{lang_folder}_translated{ext}"
+
+        # Create output directory
+        output_dir = os.path.join(
+            os.path.expanduser("~"),
+            "Documents",
+            "AIBridge",
+            "Translated",
+            lang_folder
+        )
+        os.makedirs(output_dir, exist_ok=True)
+
+        return os.path.join(output_dir, output_filename)
 
     def run_bot(self):
-        """Legacy method - redirects to Perplexity bot"""
-        self.run_perplexity_bot()
+        """Legacy method - redirects to run_web_service"""
+        # Get selected service
+        processing_settings = self.main_window.processing_tab.get_settings()
+        ai_service = processing_settings.get('ai_service', 'Perplexity')
+        self.run_web_service(ai_service)

@@ -33,10 +33,10 @@ def find_and_click(img_path: str, region: Optional[Tuple[int, int, int, int]] = 
     if check_stop_func and check_stop_func():
         return None
 
-    # Set default region to left half of screen if not provided
+    # Set default region to left half of screen if not provided and click is True
     if not region:
         screen_width, screen_height = pyautogui.size()
-        region = (0, 0, screen_width // 2, screen_height)
+        region = (0, 0, screen_width, screen_height)
 
     # Extract filename for logging
     filename = img_path.split('/')[-1].replace('.png', '')
@@ -81,6 +81,8 @@ def find_and_click(img_path: str, region: Optional[Tuple[int, int, int, int]] = 
                     return (click_x, click_y)
                 else:
                     # Just return the position without clicking
+                    if log_func and log_attempts:
+                        log_func(f"Found {filename} at ({click_x}, {click_y})")
                     return (click_x, click_y)
 
         except pyautogui.ImageNotFoundException:
@@ -98,6 +100,6 @@ def find_and_click(img_path: str, region: Optional[Tuple[int, int, int, int]] = 
     # Log failure if enabled and multiple attempts were made
     if log_attempts and max_attempts > 1:
         if log_func:
-            log_func(f"Failed to find {filename}")
+            log_func(f"Failed to find {filename} after {max_attempts} attempts")
 
     return None

@@ -300,7 +300,6 @@ class APISettingsDialog:
         # Save settings
         self.main_window.save_settings()
 
-        messagebox.showinfo("Success", "API settings saved successfully!\nKeys are encrypted and stored securely.")
         self.window.destroy()
 
     def on_cancel(self):
