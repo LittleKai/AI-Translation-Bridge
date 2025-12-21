@@ -41,11 +41,9 @@ class TranslationTab:
         for var in variables:
             var.trace('w', lambda *args: self.main_window.save_settings())
 
-        # Add progress update triggers
         self.start_id.trace('w', lambda *args: self.main_window.update_progress_display())
         self.stop_id.trace('w', lambda *args: self.main_window.update_progress_display())
-        self.input_file.trace('w', lambda *args: self.main_window.update_progress_display())
-
+        self.input_file.trace('w', lambda *args: [self.main_window.update_progress_display(), self.update_output_filename()])
 
     def create_content(self):
         """Create tab content"""
@@ -103,12 +101,46 @@ class TranslationTab:
         output_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         output_frame.columnconfigure(1, weight=1)
 
-        # Default directory info
+        # Output directory label
         ttk.Label(output_frame, text="Output directory:",
-                  font=("Arial", 9, "bold")).grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+                  font=("Arial", 9, "bold")).grid(row=0, column=0, sticky=tk.W)
 
         ttk.Label(output_frame, textvariable=self.output_directory,
-                  font=("Arial", 9), foreground="blue").grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+                  font=("Arial", 9), foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=(5, 0))
+
+        # Output filename label
+        ttk.Label(output_frame, text="Output filename:",
+                  font=("Arial", 9, "bold")).grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+
+        self.output_filename_var = tk.StringVar(value="Not generated yet")
+        self.output_filename_label = ttk.Label(output_frame, textvariable=self.output_filename_var,
+                                               font=("Arial", 9), foreground="green")
+        self.output_filename_label.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=(5, 0))
+
+        # Update output filename when needed
+        self.update_output_filename()
+
+    def update_output_filename(self):
+        """Update the output filename display"""
+        if not self.input_file.get() or not os.path.exists(self.input_file.get()):
+            self.output_filename_var.set("Not generated yet")
+            return
+
+        # Get prompt type from processing tab if available
+        prompt_type = ""
+        if hasattr(self.main_window, 'processing_tab'):
+            prompt_type = self.main_window.processing_tab.prompt_type.get()
+
+        # Generate output filename
+        input_filename = os.path.basename(self.input_file.get())
+        filename_without_ext, ext = os.path.splitext(input_filename)
+
+        if prompt_type:
+            output_filename = f"{filename_without_ext}_{prompt_type}_translated{ext}"
+        else:
+            output_filename = f"{filename_without_ext}_translated{ext}"
+
+        self.output_filename_var.set(output_filename)
 
     def create_id_range_section(self, parent, row):
         """Create ID range section"""
@@ -148,6 +180,9 @@ class TranslationTab:
 
             # Update progress display when file is selected
             self.main_window.update_progress_display()
+
+            # Update output filename display
+            self.update_output_filename()
 
     def detect_language(self, filepath):
         """Detect language from filename"""

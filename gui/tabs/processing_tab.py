@@ -109,8 +109,11 @@ class ProcessingTab:
         # Special handler for AI service change
         self.ai_service.trace('w', self.on_ai_service_change)
 
-        # Update progress when prompt type changes (affects output file path)
-        self.prompt_type.trace('w', lambda *args: self.main_window.update_progress_display())
+        # Update progress and output filename when prompt type changes
+        self.prompt_type.trace('w', lambda *args: [
+            self.main_window.update_progress_display(),
+            self.main_window.translation_tab.update_output_filename() if hasattr(self.main_window, 'translation_tab') else None
+        ])
 
     def create_content(self):
         """Create tab content"""

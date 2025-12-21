@@ -136,14 +136,14 @@ class TranslationProcessor:
             lang_folder = "Other"
             self.main_window.log_message(f"Warning: Could not detect language from filename, using 'Other' folder")
 
-        # Create output filename with language and prompt type
+        # Create output filename with prompt type only (don't duplicate language)
         filename_without_ext, ext = os.path.splitext(input_filename)
 
-        # Format: original_name_LANG_prompttype_translated.csv
+        # Format: original_name_prompttype_translated.csv
         if prompt_type:
-            output_filename = f"{filename_without_ext}_{lang_folder}_{prompt_type}_translated{ext}"
+            output_filename = f"{filename_without_ext}_{prompt_type}_translated{ext}"
         else:
-            output_filename = f"{filename_without_ext}_{lang_folder}_translated{ext}"
+            output_filename = f"{filename_without_ext}_translated{ext}"
 
         # Create output directory
         output_dir = os.path.join(

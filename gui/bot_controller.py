@@ -262,12 +262,12 @@ class BotController:
         if not lang_folder:
             lang_folder = "Other"
 
-        # Create output filename
+        # Create output filename without duplicating language
         filename_without_ext, ext = os.path.splitext(input_filename)
         if prompt_type:
-            output_filename = f"{filename_without_ext}_{lang_folder}_{prompt_type}_translated{ext}"
+            output_filename = f"{filename_without_ext}_{prompt_type}_translated{ext}"
         else:
-            output_filename = f"{filename_without_ext}_{lang_folder}_translated{ext}"
+            output_filename = f"{filename_without_ext}_translated{ext}"
 
         # Create output directory
         output_dir = os.path.join(
