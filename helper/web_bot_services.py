@@ -2,7 +2,6 @@ import time
 import pyautogui
 import pyperclip
 import re
-from helper.recognizer import find_template_position
 from helper.click_handler import find_and_click
 
 
@@ -13,105 +12,195 @@ class WebBotServices:
         self.main_window = main_window
         self.running = False
 
-    def run_perplexity_bot(self, prompt, batch_text, batch_size):
-        """Run bot specifically for Perplexity web interface with batch processing"""
+    def run_generic_bot(self, service_name, prompt, batch_text, batch_size):
+        """Generic bot runner for all AI web services"""
         try:
-            # Get all coordinates including center
-            box_coords = find_template_position(
-                "assets/Perplexity/text_input_box.png",
-                threshold=0.85,
-                return_center=True
+            # Service configuration mapping
+            service_config = {
+                'Perplexity': {
+                    'folder': 'Perplexity',
+                    'input_box': 'text_input_box.png',
+                    'send_btn': 'send_btn.png',
+                    'processing_indicator': 'is_processing.png',
+                    'action_icons': 'action_icons.png',
+                    'copy_btn': 'copy_btn.png',
+                    'more_btn': 'more_btn.png',
+                    'delete_btn': 'delete_btn.png',
+                    'confirm_btn': 'confirm_btn.png',
+                    'input_click_offset_y': -20
+                },
+                'Gemini': {
+                    'folder': 'Gemini',
+                    'input_box': 'text_input_box.png',
+                    'send_btn': 'send_btn.png',
+                    'processing_indicator': 'is_processing.png',
+                    'action_icons': 'action_icons.png',
+                    'copy_btn': 'copy_btn.png',
+                    'more_btn': 'more_btn.png',
+                    'delete_btn': 'delete_btn.png',
+                    'confirm_btn': 'confirm_btn.png',
+                    'input_click_offset_y': 0
+                },
+                'ChatGPT': {
+                    'folder': 'ChatGPT',
+                    'input_box': 'text_input_box.png',
+                    'send_btn': 'send_btn.png',
+                    'processing_indicator': 'is_processing.png',
+                    'action_icons': 'action_icons.png',
+                    'copy_btn': 'copy_btn.png',
+                    'more_btn': 'more_btn.png',
+                    'delete_btn': 'delete_btn.png',
+                    'confirm_btn': 'confirm_btn.png',
+                    'input_click_offset_y': 0
+                },
+                'Claude': {
+                    'folder': 'Claude',
+                    'input_box': 'text_input_box.png',
+                    'send_btn': 'send_btn.png',
+                    'processing_indicator': 'is_processing.png',
+                    'action_icons': 'action_icons.png',
+                    'copy_btn': 'copy_btn.png',
+                    'more_btn': 'more_btn.png',
+                    'delete_btn': 'delete_btn.png',
+                    'confirm_btn': 'confirm_btn.png',
+                    'input_click_offset_y': 0
+                },
+                'Grok': {
+                    'folder': 'Grok',
+                    'input_box': 'text_input_box.png',
+                    'send_btn': 'send_btn.png',
+                    'processing_indicator': 'is_processing.png',
+                    'action_icons': 'action_icons.png',
+                    'copy_btn': 'copy_btn.png',
+                    'more_btn': 'more_btn.png',
+                    'delete_btn': 'delete_btn.png',
+                    'confirm_btn': 'confirm_btn.png',
+                    'input_click_offset_y': 0
+                }
+            }
+
+            if service_name not in service_config:
+                self.main_window.log_message(f"Error: Service {service_name} not configured")
+                return None, f"Service {service_name} not configured"
+
+            config = service_config[service_name]
+            assets_folder = f"assets/{config['folder']}"
+
+            # Step 1: Find and click input box
+            box_coords = find_and_click(
+                f"{assets_folder}/{config['input_box']}",
+                click=False,
+                max_attempts=5,
+                delay_between=2.0,
+                confidence=0.85,
+                return_all_coords=True,
+                log_func=self.main_window.log_message
             )
 
             if not box_coords:
-                self.main_window.log_message("Error: Perplexity input box not found!")
-                self.main_window.log_message("Make sure Perplexity website is open and visible")
+                self.main_window.log_message(f"Error: {service_name} input box not found!")
+                self.main_window.log_message(f"Make sure {service_name} website is open and visible")
                 return None, "Input box not found"
 
             # Extract coordinates
             left, top, right, bottom, center_x, center_y = box_coords
 
-            # Calculate click position
+            # Calculate click position with offset
             click_x = center_x
-            click_y = center_y - 20
+            click_y = center_y + config['input_click_offset_y']
 
             # Click on the input box
             pyautogui.click(click_x, click_y)
             time.sleep(0.5)
 
-            # Clear existing text and paste prompt with batch content
+            # Step 2: Clear and input text
             pyautogui.hotkey('ctrl', 'a')
             time.sleep(0.2)
 
             # Combine prompt with batch text
-            full_text = prompt.format(count_info=f"Source text consists of {batch_size} numbered lines from 1 to {batch_size}.",
-                                      text=batch_text)
+            full_text = prompt.format(
+                count_info=f"Source text consists of {batch_size} numbered lines from 1 to {batch_size}.",
+                text=batch_text
+            )
 
             # Copy to clipboard and paste
             pyperclip.copy(full_text)
             pyautogui.hotkey('ctrl', 'v')
-            self.main_window.log_message(f"Pasted prompt with {batch_size} lines of batch text")
+            self.main_window.log_message(f"Pasted prompt with {batch_size} lines to {service_name}")
             time.sleep(0.5)
 
-            # Find and click send button
-            send_btn_coords = find_template_position(
-                "assets/Perplexity/send_btn.png",
-                threshold=0.85,
-                return_center=True
+            # Step 3: Send message
+            send_btn_coords = find_and_click(
+                f"{assets_folder}/{config['send_btn']}",
+                click=False,
+                max_attempts=5,
+                delay_between=2.0,
+                confidence=0.85,
+                return_all_coords=True,
+                log_func=self.main_window.log_message
             )
 
             if send_btn_coords:
                 left, top, right, bottom, center_x, center_y = send_btn_coords
                 pyautogui.click(center_x, center_y)
+                self.main_window.log_message(f"Clicked send button in {service_name}")
             else:
                 self.main_window.log_message("Send button not found, trying Enter key")
                 pyautogui.press('enter')
 
-            # Wait for processing to complete
+            # Step 4: Wait for processing to complete
             screen_width, screen_height = pyautogui.size()
             processing_region = (0, screen_height - 300, screen_width, 300)  # Bottom 300px of screen
 
             is_processing = True
             attempt_count = 0
-            max_wait_attempts = 20
+            max_wait_attempts = 30  # Maximum 2.5 minutes wait
 
+            self.main_window.log_message(f"Waiting for {service_name} to process...")
             while is_processing and attempt_count < max_wait_attempts:
                 processing_icon = find_and_click(
-                    "assets/Perplexity/is_processing.png",
+                    f"{assets_folder}/{config['processing_indicator']}",
                     region=processing_region,
                     click=False,
                     max_attempts=1,
                     confidence=0.85,
-                    log_func=self.main_window.log_message
+                    log_func=None  # Don't log each check
                 )
 
                 if processing_icon:
                     time.sleep(5.0)
                     attempt_count += 1
+                    if attempt_count % 6 == 0:  # Log every 30 seconds
+                        self.main_window.log_message(f"Still processing... ({attempt_count * 5} seconds elapsed)")
                 else:
                     is_processing = False
+                    self.main_window.log_message("Processing completed")
 
-            screen_width, screen_height = pyautogui.size()
+            # Step 5: Scroll to bottom and find copy button
             for i in range(2):
                 pyautogui.click(screen_width // 2, screen_height // 2)
                 time.sleep(0.5)
                 pyautogui.press('end')
                 time.sleep(0.5)
 
-            # Look for action icons to find copy button
-            action_icons = find_template_position(
-                "assets/Perplexity/action_icons.png",
-                threshold=0.85,
-                return_center=False
+            # Step 6: Find action icons and copy response
+            action_icons = find_and_click(
+                f"{assets_folder}/{config['action_icons']}",
+                click=False,
+                max_attempts=5,
+                delay_between=2.0,
+                confidence=0.85,
+                return_all_coords=False,
+                log_func=self.main_window.log_message
             )
 
             if action_icons:
                 # Define region around action icons for copy button
-                left, top, right, bottom = action_icons
-                action_region = (left - 50, top - 50, right - left + 100, bottom - top + 100)
+                action_x, action_y = action_icons
+                action_region = (action_x - 100, action_y - 100, 200, 200)
 
                 copy_result = find_and_click(
-                    "assets/Perplexity/copy_btn.png",
+                    f"{assets_folder}/{config['copy_btn']}",
                     region=action_region,
                     click=True,
                     max_attempts=3,
@@ -122,42 +211,42 @@ class WebBotServices:
 
                 if copy_result:
                     time.sleep(0.5)
-
                     # Get response from clipboard
                     response_text = pyperclip.paste()
 
-                    # Parse the response similar to API response parsing
+                    # Parse the response
                     translated_lines = self.parse_numbered_text(response_text, batch_size)
 
                     # Clean up chat
-                    self.cleanup_perplexity_chat()
+                    self.cleanup_chat(service_name, config, assets_folder)
 
                     return translated_lines, None
                 else:
-                    self.main_window.log_message("Failed to find copy button")
+                    self.main_window.log_message(f"Failed to find copy button in {service_name}")
             else:
-                self.main_window.log_message("Action icons not found")
+                self.main_window.log_message(f"Action icons not found in {service_name}")
 
             # Clean up even if failed
-            self.cleanup_perplexity_chat()
+            self.cleanup_chat(service_name, config, assets_folder)
 
             return None, "Failed to get response"
 
         except Exception as e:
-            self.main_window.log_message(f"Perplexity bot error: {str(e)}")
+            self.main_window.log_message(f"{service_name} bot error: {str(e)}")
             return None, str(e)
 
-    def cleanup_perplexity_chat(self):
-        """Clean up Perplexity chat by deleting the conversation"""
+    def cleanup_chat(self, service_name, config, assets_folder):
+        """Generic cleanup function for all services"""
         try:
-            self.main_window.log_message("Cleaning up chat...")
+            self.main_window.log_message(f"Cleaning up {service_name} chat...")
 
             # Find chat option region at top of screen
             screen_width, _ = pyautogui.size()
-            top_region = (screen_width/2, 0, screen_width, 300)  # Top 300px of screen
+            top_region = (0, 50, screen_width, 300)  # Top 300px of screen
 
+            # Click more/options button
             more_clicked = find_and_click(
-                "assets/Perplexity/more_btn.png",
+                f"{assets_folder}/{config['more_btn']}",
                 region=top_region,
                 click=True,
                 max_attempts=3,
@@ -171,7 +260,7 @@ class WebBotServices:
 
                 # Click delete button
                 delete_clicked = find_and_click(
-                    "assets/Perplexity/delete_btn.png",
+                    f"{assets_folder}/{config['delete_btn']}",
                     click=True,
                     max_attempts=3,
                     delay_between=1.0,
@@ -184,7 +273,7 @@ class WebBotServices:
 
                     # Click confirm button
                     confirm_clicked = find_and_click(
-                        "assets/Perplexity/confirm_btn.png",
+                        f"{assets_folder}/{config['confirm_btn']}",
                         click=True,
                         max_attempts=3,
                         delay_between=1.0,
@@ -193,7 +282,7 @@ class WebBotServices:
                     )
 
                     if confirm_clicked:
-                        self.main_window.log_message("Chat deleted successfully")
+                        self.main_window.log_message(f"{service_name} chat deleted successfully")
                     else:
                         self.main_window.log_message("Failed to confirm deletion")
                 else:
@@ -235,68 +324,34 @@ class WebBotServices:
 
         return lines
 
-    def run_gemini_bot(self):
+    # Wrapper functions for backward compatibility
+    def run_perplexity_bot(self, prompt, batch_text, batch_size):
+        """Run bot specifically for Perplexity web interface"""
+        return self.run_generic_bot('Perplexity', prompt, batch_text, batch_size)
+
+    def run_gemini_bot(self, prompt, batch_text, batch_size):
         """Run bot specifically for Gemini web interface"""
-        try:
-            # self.main_window.log_message("Starting Gemini web automation...")
-            # self.main_window.log_message("Gemini web automation is under development")
-            #
-            # # TODO: Implement Gemini web interface automation
-            # # This would involve:
-            # # 1. Finding Gemini input field
-            # # 2. Typing translation prompt
-            # # 3. Sending the prompt
-            # # 4. Extracting the response
-            #
-            # self.main_window.log_message("Gemini web automation not yet fully implemented")
-            # return None, "Not implemented"
-            self.cleanup_perplexity_chat()
+        return self.run_generic_bot('Gemini', prompt, batch_text, batch_size)
 
-        except Exception as e:
-            self.main_window.log_message(f"Gemini bot error: {str(e)}")
-            return None, str(e)
-
-    def run_chatgpt_bot(self):
+    def run_chatgpt_bot(self, prompt, batch_text, batch_size):
         """Run bot specifically for ChatGPT web interface"""
-        try:
-            self.main_window.log_message("Starting ChatGPT web automation...")
-            self.main_window.log_message("ChatGPT web automation is under development")
+        return self.run_generic_bot('ChatGPT', prompt, batch_text, batch_size)
 
-            # TODO: Implement ChatGPT web interface automation
-
-            self.main_window.log_message("ChatGPT web automation not yet fully implemented")
-            return None, "Not implemented"
-
-        except Exception as e:
-            self.main_window.log_message(f"ChatGPT bot error: {str(e)}")
-            return None, str(e)
-
-    def run_claude_bot(self):
+    def run_claude_bot(self, prompt, batch_text, batch_size):
         """Run bot specifically for Claude web interface"""
-        try:
-            self.main_window.log_message("Starting Claude web automation...")
-            self.main_window.log_message("Claude web automation is under development")
+        return self.run_generic_bot('Claude', prompt, batch_text, batch_size)
 
-            # TODO: Implement Claude web interface automation
-
-            self.main_window.log_message("Claude web automation not yet fully implemented")
-            return None, "Not implemented"
-
-        except Exception as e:
-            self.main_window.log_message(f"Claude bot error: {str(e)}")
-            return None, str(e)
-
-    def run_grok_bot(self):
+    def run_grok_bot(self, prompt, batch_text, batch_size):
         """Run bot specifically for Grok web interface"""
-        try:
-            self.main_window.log_message("Starting Grok web automation...")
-            self.main_window.log_message("Grok web automation is under development")
+        return self.run_generic_bot('Grok', prompt, batch_text, batch_size)
 
-            # TODO: Implement Grok web interface automation
-
-            self.main_window.log_message("Grok web automation not yet fully implemented")
-            return None, "Not implemented"
-
-        except Exception as e:
-            self.main_window.log_message(f"Grok bot error: {str(e)}")
-            return None, str(e)
+    # Keep old cleanup function for backward compatibility
+    def cleanup_perplexity_chat(self):
+        """Clean up Perplexity chat by deleting the conversation"""
+        config = {
+            'folder': 'Perplexity',
+            'more_btn': 'more_btn.png',
+            'delete_btn': 'delete_btn.png',
+            'confirm_btn': 'confirm_btn.png'
+        }
+        self.cleanup_chat('Perplexity', config, 'assets/Perplexity')

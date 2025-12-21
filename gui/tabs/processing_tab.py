@@ -216,10 +216,15 @@ class ProcessingTab:
         if "API" in service:
             self.model_frame.grid()
 
-            # Set default model for the selected API service
+            # Load saved model or use default
             if service in self.api_configs:
-                default_model = self.api_configs[service]['default_model']
-                if not self.ai_model.get():  # Only set if empty
+                # Check if we have a saved model for this service
+                saved_model = self.api_configs[service].get('saved_model', '')
+                if saved_model:
+                    self.ai_model.set(saved_model)
+                else:
+                    # Use default model
+                    default_model = self.api_configs[service]['default_model']
                     self.ai_model.set(default_model)
         else:
             self.model_frame.grid_remove()
@@ -257,7 +262,7 @@ class ProcessingTab:
             'ai_model': self.ai_model.get()
         }
 
-        # Add API configurations
+        # Add API configurations and save current model
         settings['api_configs'] = {}
         for service, config in self.api_configs.items():
             settings['api_configs'][service] = {
@@ -265,7 +270,8 @@ class ProcessingTab:
                 'max_tokens': config['max_tokens'],
                 'temperature': config['temperature'],
                 'top_p': config['top_p'],
-                'top_k': config['top_k']
+                'top_k': config['top_k'],
+                'saved_model': self.ai_model.get() if service == self.ai_service.get() else config.get('saved_model', '')
             }
 
         return settings
@@ -282,11 +288,14 @@ class ProcessingTab:
             if 'ai_model' in settings:
                 self.ai_model.set(settings['ai_model'])
 
-            # Load API configurations
+            # Load API configurations with saved models
             if 'api_configs' in settings:
                 for service, config in settings['api_configs'].items():
                     if service in self.api_configs:
                         self.api_configs[service].update(config)
+                        # Store saved model
+                        if 'saved_model' in config:
+                            self.api_configs[service]['saved_model'] = config['saved_model']
 
             # Trigger service change handler to show/hide model config
             self.on_ai_service_change()

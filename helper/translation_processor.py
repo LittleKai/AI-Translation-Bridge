@@ -242,26 +242,53 @@ class TranslationProcessor:
             self.main_window.log_message(f"Error reading input file: {e}")
             return
 
+        # Check for existing output file and get last processed ID
+        last_processed_id = None
+        existing_results = []
+        if os.path.exists(output_file):
+            try:
+                existing_df = pd.read_csv(output_file)
+                if not existing_df.empty:
+                    existing_results = existing_df.to_dict('records')
+                    last_processed_id = existing_df['id'].max()
+                    self.main_window.log_message(f"Found existing output with {len(existing_df)} rows, last ID: {last_processed_id}")
+            except Exception as e:
+                self.main_window.log_message(f"Warning: Could not read existing output: {e}")
+
         # Filter by ID range
         try:
+            # Apply start/stop ID filters
             start_id = int(start_id) if start_id else None
             stop_id = int(stop_id) if stop_id else None
 
-            if start_id:
+            if start_id is not None:
                 df = df[df['id'] >= start_id]
-            if stop_id:
+            if stop_id is not None:
                 df = df[df['id'] <= stop_id]
+
+            # Filter out already processed IDs
+            if last_processed_id is not None:
+                df = df[df['id'] > last_processed_id]
+                self.main_window.log_message(f"Continuing from ID {last_processed_id + 1}")
 
             self.main_window.log_message(f"Processing {len(df)} rows after filtering (ID range: {start_id or 'start'} to {stop_id or 'end'})")
             self.total_input_rows = len(df)
+
+            # Add already processed rows to total for progress display
+            if existing_results:
+                self.processed_rows = len(existing_results)
+                self.total_input_rows += self.processed_rows
+
         except Exception as e:
             self.main_window.log_message(f"Warning: Could not filter by ID range: {e}")
             self.total_input_rows = len(df)
 
+        # Start with existing results
+        results = existing_results.copy()
+
         # Process in batches
         batch_size = int(batch_size) if batch_size else 10
-        results = []
-        total_batches = (len(df) - 1) // batch_size + 1
+        total_batches = (len(df) - 1) // batch_size + 1 if len(df) > 0 else 0
 
         for batch_num, i in enumerate(range(0, len(df), batch_size), 1):
             if not self.is_running:
@@ -272,8 +299,11 @@ class TranslationProcessor:
             batch_ids = batch['id'].tolist()
             self.main_window.log_message(f"Processing batch {batch_num}/{total_batches} (IDs: {batch_ids[0]}-{batch_ids[-1]}, {len(batch)} rows)")
 
-            # Create batch text - FIXED: Use iterrows() instead of values
-            batch_text = "\n".join([f"{j+1}. {row['text']}" for j, (_, row) in enumerate(batch.iterrows())])
+            # Create batch text without trailing newline
+            batch_lines = []
+            for j, (_, row) in enumerate(batch.iterrows()):
+                batch_lines.append(f"{j+1}. {row['text']}")
+            batch_text = "\n".join(batch_lines)
 
             # Format prompt
             count_info = f"Source text consists of {len(batch)} numbered lines from 1 to {len(batch)}."

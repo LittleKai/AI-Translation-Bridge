@@ -333,10 +333,6 @@ class AITranslationBridgeGUI:
         """Toggle compact mode"""
         self.compact_mode = not self.compact_mode
 
-        # Get current position
-        current_x = self.root.winfo_x()
-        current_y = self.root.winfo_y()
-
         if self.compact_mode:
             # Hide header and tabs
             self.header_frame.grid_forget()
@@ -354,8 +350,15 @@ class AITranslationBridgeGUI:
             # Keep original width
             compact_width = self.window_manager.original_size['width']
 
-            # Set compact size while maintaining position
-            self.root.geometry(f"{compact_width}x{compact_height}+{current_x}+{current_y}")
+            # Position window at left side, center vertically
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+
+            x_position = 0  # Left side of screen
+            y_position = (screen_height - compact_height) // 2  # Center vertically
+
+            # Set compact size and position
+            self.root.geometry(f"{compact_width}x{compact_height}+{x_position}+{y_position}")
 
             # Force minimum size for compact mode
             self.root.minsize(compact_width, compact_height)
@@ -368,6 +371,10 @@ class AITranslationBridgeGUI:
             # Remove always on top
             self.root.attributes('-topmost', False)
 
+            # Get current position before restoring
+            current_x = self.root.winfo_x()
+            current_y = self.root.winfo_y()
+
             # Restore original size while maintaining position
             width = self.window_manager.original_size['width']
             height = self.window_manager.original_size['height']
@@ -375,7 +382,7 @@ class AITranslationBridgeGUI:
             # Restore original minimum size
             self.root.minsize(500, 750)
 
-            # Set geometry
+            # Set geometry with current position
             self.root.geometry(f"{width}x{height}+{current_x}+{current_y}")
 
             # Force update
