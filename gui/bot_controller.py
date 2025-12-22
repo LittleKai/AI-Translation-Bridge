@@ -254,7 +254,10 @@ class BotController:
                     prompt = prompt_row.iloc[0][source_lang]
                     if pd.notna(prompt) and prompt:
                         self.main_window.log_message(f"Loaded prompt for {source_lang}, type: {prompt_type}")
-                        return prompt
+                        # Add format placeholders and additional instructions
+                        # These will be replaced with actual values later
+                        prompt_with_format = prompt.strip() + "\n{count_info}\nVẫn giữ định dạng đánh số như bản gốc (1., 2., ...).\nChỉ trả về các dòng dịch được đánh số, không viết thêm bất kỳ nội dung nào khác.\nĐây là văn bản cần chuyển ngữ:\n{text}"
+                        return prompt_with_format
 
             return None
 

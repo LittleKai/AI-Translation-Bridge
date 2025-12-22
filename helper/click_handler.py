@@ -66,8 +66,8 @@ def find_and_click(img_path: str, region: Optional[Tuple[int, int, int, int]] = 
                 # Calculate click position based on use_random
                 if use_random:
                     # Random position within the box (with some margin from edges)
-                    margin_x = max(2, w // 10)  # 10% margin or minimum 2px
-                    margin_y = max(2, h // 10)
+                    margin_x = max(2, w // 20)  # 20% margin or minimum 2px
+                    margin_y = max(2, h // 20)
                     click_x = random.randint(x + margin_x, x + w - margin_x)
                     click_y = random.randint(y + margin_y, y + h - margin_y)
                 else:
