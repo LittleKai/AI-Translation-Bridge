@@ -268,7 +268,7 @@ class TranslationProcessor:
 
         # Create a set of all IDs that should be in the output (from filtered input)
         all_input_ids = set(df['id'].tolist())
-        self.main_window.log_message(f"Total IDs to process: {len(all_input_ids)} (Range: {min(all_input_ids)} to {max(all_input_ids)})")
+        self.main_window.log_message(f"Total IDs in range: {len(all_input_ids)} (Range: {min(all_input_ids)} to {max(all_input_ids)})")
 
         # Load existing output and check what needs processing
         existing_results = {}
@@ -289,7 +289,8 @@ class TranslationProcessor:
                         }
 
                         # Check if this ID has valid translation
-                        if row.get('edit') and str(row.get('edit')).strip():
+                        edit_value = row.get('edit', '')
+                        if edit_value and str(edit_value).strip() and str(edit_value).strip() != 'nan':
                             completed_ids.add(row_id)
                         else:
                             failed_ids.add(row_id)
@@ -306,8 +307,9 @@ class TranslationProcessor:
         missing_ids = all_input_ids - set(existing_results.keys())
         # 2. IDs in input range that failed previously
         retry_ids = all_input_ids & failed_ids
-        # Combine both sets
-        ids_to_process = missing_ids | retry_ids
+
+        # Combine both sets and sort to prioritize smaller IDs
+        ids_to_process = sorted(missing_ids | retry_ids)
 
         self.main_window.log_message(f"Analysis of IDs to process:")
         self.main_window.log_message(f"  - Missing from output: {len(missing_ids)} IDs")
@@ -318,17 +320,23 @@ class TranslationProcessor:
             self.main_window.log_message(f"    First 10 missing IDs: {sample_missing}...")
 
         self.main_window.log_message(f"  - Failed/need retry: {len(retry_ids)} IDs")
+        if retry_ids and len(retry_ids) <= 10:
+            self.main_window.log_message(f"    Failed IDs: {sorted(list(retry_ids))}")
+        elif retry_ids:
+            sample_retry = sorted(list(retry_ids))[:10]
+            self.main_window.log_message(f"    First 10 failed IDs: {sample_retry}...")
+
         self.main_window.log_message(f"  - Total to process: {len(ids_to_process)} IDs")
 
         if not ids_to_process:
             self.main_window.log_message("All IDs in range already have valid translations. Nothing to process.")
             return
 
-        # Create dataframe of rows to process
+        # Create dataframe of rows to process, sorted by ID
         df_to_process = df[df['id'].isin(ids_to_process)]
-        df_to_process = df_to_process.sort_values('id')  # Sort by ID
+        df_to_process = df_to_process.sort_values('id')  # Sort by ID to process smallest first
 
-        self.main_window.log_message(f"Prepared {len(df_to_process)} rows for processing")
+        self.main_window.log_message(f"Prepared {len(df_to_process)} rows for processing (sorted by ID)")
 
         # Set total for progress tracking
         self.total_input_rows = len(all_input_ids)
@@ -383,7 +391,7 @@ class TranslationProcessor:
                         'id': row['id'],
                         'raw': row['text'],
                         'edit': translation,
-                        'status': '' if translation else 'failed'
+                        'status': '' if translation else 'failed'  # Empty status for successful
                     }
             else:
                 # Mark batch as failed
@@ -431,6 +439,7 @@ class TranslationProcessor:
             self.main_window.log_message(f"Successful: {completed_count} rows")
             self.main_window.log_message(f"Failed/Empty: {failed_count} rows")
             self.main_window.log_message(f"Output saved to: {output_file}")
+
 
     def parse_numbered_text(self, text, expected_count):
         """Parse numbered text into list of translations"""

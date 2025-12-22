@@ -118,27 +118,11 @@ class WebBotServices:
             pyautogui.hotkey('ctrl', 'a')
             time.sleep(0.2)
 
-            # Kiểm tra và tự động sửa Prompt nếu thiếu placeholder
-            formatted_prompt = prompt
-            count_info_str = f"Source text consists of {batch_size} numbered lines from 1 to {batch_size}."
-
-            # Nếu prompt chưa có chỗ điền text, tự động nối thêm vào cuối
-            if "{text}" not in prompt:
-                # Nếu prompt chưa có count_info, thêm vào luôn
-                if "{count_info}" not in prompt:
-                    formatted_prompt = f"{prompt}\n\n{count_info_str}\n\nNội dung cần dịch:\n{{text}}"
-                else:
-                    formatted_prompt = f"{prompt}\n\nNội dung cần dịch:\n{{text}}"
-
-            # Thực hiện format an toàn
-            try:
-                full_text = formatted_prompt.format(
-                    count_info=count_info_str,
-                    text=batch_text
-                )
-            except KeyError:
-                # Fallback nếu format lỗi do xung đột ngoặc nhọn
-                full_text = f"{prompt}\n\n{count_info_str}\n\nNội dung cần dịch:\n{batch_text}"
+            # Combine prompt with batch text - ensure formatting is correct
+            full_text = prompt.format(
+                count_info=f"Source text consists of {batch_size} numbered lines from 1 to {batch_size}.",
+                text=batch_text
+            )
 
             # Copy to clipboard and paste
             pyperclip.copy(full_text)

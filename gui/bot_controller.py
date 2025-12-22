@@ -62,16 +62,35 @@ class BotController:
             # Generate output path
             output_path = self.generate_output_path(input_file, prompt_type)
 
-            # Check for existing output and get last processed ID
-            last_processed_id = None
-            existing_results = []
+            # Check for existing output and analyze processed/failed IDs
+            existing_results = {}
+            completed_ids = set()
+            failed_ids = set()
+
             if os.path.exists(output_path):
                 try:
                     existing_df = pd.read_csv(output_path)
                     if not existing_df.empty:
-                        existing_results = existing_df.to_dict('records')
-                        last_processed_id = existing_df['id'].max()
-                        self.main_window.log_message(f"Found existing output with {len(existing_df)} rows, continuing from ID {last_processed_id + 1}")
+                        # Build existing results dictionary
+                        for _, row in existing_df.iterrows():
+                            row_id = row['id']
+                            existing_results[row_id] = {
+                                'id': row_id,
+                                'raw': row.get('raw', ''),
+                                'edit': row.get('edit', ''),
+                                'status': row.get('status', '')
+                            }
+
+                            # Check if translation exists and is valid
+                            edit_value = row.get('edit', '')
+                            if edit_value and str(edit_value).strip() and str(edit_value).strip() != 'nan':
+                                completed_ids.add(row_id)
+                            else:
+                                failed_ids.add(row_id)
+
+                        self.main_window.log_message(f"Found existing output with {len(existing_df)} rows")
+                        self.main_window.log_message(f"  - Completed: {len(completed_ids)} rows")
+                        self.main_window.log_message(f"  - Failed/Empty: {len(failed_ids)} rows")
                 except Exception as e:
                     self.main_window.log_message(f"Warning: Could not read existing output: {e}")
 
@@ -88,18 +107,40 @@ class BotController:
                 if stop_id is not None:
                     df = df[df['id'] <= stop_id]
 
-                # Filter out already processed IDs
-                if last_processed_id is not None:
-                    df = df[df['id'] > last_processed_id]
-
             except Exception as e:
                 self.main_window.log_message(f"Warning: Could not filter by ID range: {e}")
 
+            # Get all IDs in the filtered range
+            all_input_ids = set(df['id'].tolist())
+
+            # Find IDs that need processing:
+            # 1. Missing IDs (in input range but not in output at all)
+            missing_ids = all_input_ids - set(existing_results.keys())
+
+            # 2. Failed IDs (in input range and previously failed)
+            retry_ids = all_input_ids & failed_ids
+
+            # Combine and sort to prioritize smaller IDs first
+            ids_to_process = sorted(missing_ids | retry_ids)
+
+            if ids_to_process:
+                self.main_window.log_message(f"IDs to process: {len(ids_to_process)} (prioritizing missing/failed IDs)")
+                if len(ids_to_process) <= 10:
+                    self.main_window.log_message(f"  Processing IDs: {ids_to_process}")
+                else:
+                    self.main_window.log_message(f"  First 10 IDs: {ids_to_process[:10]}...")
+                    self.main_window.log_message(f"  ID range: {min(ids_to_process)} to {max(ids_to_process)}")
+            else:
+                self.main_window.log_message("All IDs in range have valid translations. Nothing to process.")
+                self.main_window.root.after(0, self.main_window.stop_bot)
+                return
+
+            # Filter dataframe to only include IDs that need processing
+            df = df[df['id'].isin(ids_to_process)]
+            df = df.sort_values('id')  # Sort by ID to process in order
+
             # Get batch settings
             batch_size = int(processing_settings.get('batch_size', 10))
-
-            # Start with existing results
-            results = existing_results.copy()
 
             # Process all batches continuously
             total_batches = (len(df) - 1) // batch_size + 1 if len(df) > 0 else 0
@@ -131,32 +172,33 @@ class BotController:
                     self.main_window.log_message(f"Successfully processed {len(translations)} translations")
                     # Add results for this batch
                     for (idx, row), translation in zip(batch.iterrows(), translations):
-                        results.append({
+                        existing_results[row['id']] = {
                             'id': row['id'],
                             'raw': row['text'],
                             'edit': translation,
-                            'status': 'completed' if translation else 'failed'
-                        })
+                            'status': ''  # Empty status for successful translations
+                        }
                 else:
                     self.main_window.log_message(f"Failed to get translations: {error}")
                     # Mark batch as failed
                     for idx, row in batch.iterrows():
-                        results.append({
+                        existing_results[row['id']] = {
                             'id': row['id'],
                             'raw': row['text'],
                             'edit': '',
                             'status': 'failed'
-                        })
+                        }
 
-                # Save intermediate results
-                if results:
-                    results_df = pd.DataFrame(results)
+                # Save intermediate results (sorted by ID)
+                if existing_results:
+                    results_list = list(existing_results.values())
+                    results_df = pd.DataFrame(results_list)
                     results_df_sorted = results_df.sort_values('id')
                     results_df_sorted.to_csv(output_path, index=False)
 
                     # Update progress
                     self.main_window.translation_processor.current_output_file = output_path
-                    self.main_window.translation_processor.total_input_rows = len(df) + len(existing_results)
+                    self.main_window.translation_processor.total_input_rows = len(all_input_ids)
                     self.main_window.translation_processor.update_progress()
 
                 # Delay between batches if not the last one
@@ -165,12 +207,13 @@ class BotController:
                     time.sleep(3)
 
             # Final summary
-            if results:
-                completed_count = len([r for r in results if r['status'] == 'completed'])
-                failed_count = len([r for r in results if r['status'] == 'failed'])
+            if existing_results:
+                results_list = list(existing_results.values())
+                completed_count = sum(1 for r in results_list if r.get('edit') and str(r.get('edit')).strip())
+                failed_count = sum(1 for r in results_list if not r.get('edit') or not str(r.get('edit')).strip())
 
                 self.main_window.log_message(f"Processing completed!")
-                self.main_window.log_message(f"Total: {len(results)} rows")
+                self.main_window.log_message(f"Total: {len(results_list)} rows")
                 self.main_window.log_message(f"Successful: {completed_count} rows")
                 self.main_window.log_message(f"Failed: {failed_count} rows")
                 self.main_window.log_message(f"Output saved to: {output_path}")
