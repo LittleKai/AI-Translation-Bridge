@@ -23,7 +23,11 @@ class TranslationProcessor:
         if self.current_output_file and os.path.exists(self.current_output_file):
             try:
                 output_df = pd.read_csv(self.current_output_file)
-                self.processed_rows = len(output_df)
+                # Count rows with text in edit column as processed
+                if 'edit' in output_df.columns:
+                    self.processed_rows = len(output_df[output_df['edit'].notna() & (output_df['edit'] != '')])
+                else:
+                    self.processed_rows = 0
             except:
                 self.processed_rows = 0
         else:
@@ -241,16 +245,30 @@ class TranslationProcessor:
             self.main_window.log_message(f"Error reading input file: {e}")
             return
 
-        # Check for existing output file and get last processed ID
-        last_processed_id = None
+        # Check for existing output file and get completed IDs (rows with text in edit column)
         existing_results = []
+        completed_ids = set()  # Track IDs that have edit text
+
         if os.path.exists(output_file):
             try:
                 existing_df = pd.read_csv(output_file)
                 if not existing_df.empty:
                     existing_results = existing_df.to_dict('records')
-                    last_processed_id = existing_df['id'].max()
-                    self.main_window.log_message(f"Found existing output with {len(existing_df)} rows, last ID: {last_processed_id}")
+
+                    # Get IDs where edit column has text (not empty/null)
+                    if 'edit' in existing_df.columns:
+                        # Consider completed if edit column has non-empty text
+                        completed_df = existing_df[existing_df['edit'].notna() & (existing_df['edit'] != '')]
+                        completed_ids = set(completed_df['id'].tolist())
+                        failed_count = len(existing_df) - len(completed_ids)
+
+                        if completed_ids:
+                            self.main_window.log_message(f"Found {len(completed_ids)} completed rows, will retry {failed_count} failed/empty rows")
+                        else:
+                            self.main_window.log_message(f"Found {len(existing_df)} rows but none completed, will retry all")
+                    else:
+                        self.main_window.log_message("No 'edit' column found in existing output, will process all")
+
             except Exception as e:
                 self.main_window.log_message(f"Warning: Could not read existing output: {e}")
 
@@ -265,25 +283,26 @@ class TranslationProcessor:
             if stop_id is not None:
                 df = df[df['id'] <= stop_id]
 
-            # Filter out already processed IDs
-            if last_processed_id is not None:
-                df = df[df['id'] > last_processed_id]
-                self.main_window.log_message(f"Continuing from ID {last_processed_id + 1}")
+            # Filter out only successfully completed IDs (with edit text)
+            if completed_ids:
+                df = df[~df['id'].isin(completed_ids)]
+                self.main_window.log_message(f"Excluding {len(completed_ids)} completed IDs, will process {len(df)} rows")
 
             self.main_window.log_message(f"Processing {len(df)} rows after filtering (ID range: {start_id or 'start'} to {stop_id or 'end'})")
             self.total_input_rows = len(df)
 
             # Add already processed rows to total for progress display
             if existing_results:
-                self.processed_rows = len(existing_results)
+                # Count completed based on edit column having text
+                self.processed_rows = len([r for r in existing_results if r.get('edit') and str(r.get('edit')).strip()])
                 self.total_input_rows += self.processed_rows
 
         except Exception as e:
             self.main_window.log_message(f"Warning: Could not filter by ID range: {e}")
             self.total_input_rows = len(df)
 
-        # Start with existing results
-        results = existing_results.copy()
+        # Keep only completed results (with edit text), remove failed ones for retry
+        results = [r for r in existing_results if r.get('edit') and str(r.get('edit')).strip()]
 
         # Process in batches
         batch_size = int(batch_size) if batch_size else 10
@@ -320,8 +339,6 @@ class TranslationProcessor:
                 translated_text, error_msg = self.api_handler.call_claude_api(prompt, model_name, api_config, self.current_api_keys)
             elif ai_service == "Grok API":
                 translated_text, error_msg = self.api_handler.call_grok_api(prompt, model_name, api_config, self.current_api_keys)
-            elif ai_service == "Perplexity API":
-                translated_text, error_msg = self.api_handler.call_perplexity_api(prompt, model_name, api_config, self.current_api_keys)
 
             if translated_text:
                 # Parse translated text
@@ -335,7 +352,7 @@ class TranslationProcessor:
                         'id': row['id'],
                         'raw': row['text'],
                         'edit': translation,
-                        'status': 'completed' if translation else 'failed'
+                        'status': '' if translation else 'failed'  # Empty status for completed, 'failed' for failed
                     })
             else:
                 # Mark batch as failed
@@ -366,8 +383,9 @@ class TranslationProcessor:
             results_df_sorted = results_df.sort_values('id')
             results_df_sorted.to_csv(output_file, index=False)
 
-            completed_count = len([r for r in results if r['status'] == 'completed'])
-            failed_count = len([r for r in results if r['status'] == 'failed'])
+            # Count based on edit column having text
+            completed_count = len([r for r in results if r.get('edit') and str(r.get('edit')).strip()])
+            failed_count = len([r for r in results if not r.get('edit') or not str(r.get('edit')).strip()])
 
             self.main_window.log_message(f"Translation completed!")
             self.main_window.log_message(f"Total: {len(results)} rows processed")

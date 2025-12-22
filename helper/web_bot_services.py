@@ -93,17 +93,24 @@ class WebBotServices:
                 max_attempts=5,
                 delay_between=2.0,
                 confidence=0.85,
-                return_all_coords=True,
-                log_func=self.main_window.log_message
+                return_all_coords=True
             )
 
             if not box_coords:
-                self.main_window.log_message(f"Error: {service_name} input box not found!")
+                error_msg = f"Critical: {service_name} input box not found! Stopping bot."
+                self.main_window.log_message(error_msg)
                 self.main_window.log_message(f"Make sure {service_name} website is open and visible")
-                return None, "Input box not found"
+                self.main_window.status_section.set_bot_status("Bot stopped - Image not found", "red")
+                return None, error_msg
 
             # Extract coordinates
             left, top, right, bottom, center_x, center_y = box_coords
+
+            # if service_name=="Perplexity":
+            #     box_region =  left, top, right, bottom
+            #     if find_and_click("assets/Perplexity/Exception/choose_model.png",region=box_region):
+            #         if find_and_click("assets/Perplexity/Exception/gemini_3_flash.png", confidence=0.9):
+            #             time.sleep(1.0)
 
             # Calculate click position with offset
             click_x = center_x
@@ -136,8 +143,7 @@ class WebBotServices:
                 max_attempts=5,
                 delay_between=2.0,
                 confidence=0.85,
-                return_all_coords=True,
-                log_func=self.main_window.log_message
+                return_all_coords=True
             )
 
             if send_btn_coords:
@@ -145,8 +151,11 @@ class WebBotServices:
                 pyautogui.click(center_x, center_y)
                 self.main_window.log_message(f"Clicked send button in {service_name}")
             else:
-                self.main_window.log_message("Send button not found, trying Enter key")
-                pyautogui.press('enter')
+                # Send button is critical - stop if not found
+                error_msg = f"Critical: {service_name} send button not found! Stopping bot."
+                self.main_window.log_message(error_msg)
+                self.main_window.status_section.set_bot_status("Bot stopped - Image not found", "red")
+                return None, error_msg
 
             # Step 4: Wait for processing to complete
             screen_width, screen_height = pyautogui.size()
@@ -154,7 +163,7 @@ class WebBotServices:
 
             is_processing = True
             attempt_count = 0
-            max_wait_attempts = 30  # Maximum 2.5 minutes wait
+            max_wait_attempts = 60  # Maximum 5 minutes wait
 
             self.main_window.log_message(f"Waiting for {service_name} to process...")
             while is_processing and attempt_count < max_wait_attempts:
@@ -188,52 +197,57 @@ class WebBotServices:
                 f"{assets_folder}/{config['action_icons']}",
                 click=False,
                 max_attempts=5,
-                delay_between=2.0,
+                delay_between=1.0,
                 confidence=0.85,
-                return_all_coords=False,
-                log_func=self.main_window.log_message
+                return_all_coords=False
             )
 
-            if action_icons:
-                # Define region around action icons for copy button
-                action_x, action_y = action_icons
-                action_region = (action_x - 100, action_y - 100, 200, 200)
+            if not action_icons:
+                error_msg = f"Critical: {service_name} action icons not found! Stopping bot."
+                self.main_window.log_message(error_msg)
+                self.main_window.status_section.set_bot_status("Bot stopped - Image not found", "red")
+                # Try to clean up before stopping
+                self.cleanup_chat(service_name, config, assets_folder)
+                return None, error_msg
 
-                copy_result = find_and_click(
-                    f"{assets_folder}/{config['copy_btn']}",
-                    region=action_region,
-                    click=True,
-                    max_attempts=3,
-                    delay_between=1.0,
-                    confidence=0.85,
-                    log_func=self.main_window.log_message
-                )
+            # Define region around action icons for copy button
+            action_x, action_y = action_icons
+            action_region = (action_x - 100, action_y - 100, 200, 200)
 
-                if copy_result:
-                    time.sleep(0.5)
-                    # Get response from clipboard
-                    response_text = pyperclip.paste()
+            copy_result = find_and_click(
+                f"{assets_folder}/{config['copy_btn']}",
+                region=action_region,
+                click=True,
+                max_attempts=3,
+                delay_between=1.0,
+                confidence=0.85
+            )
 
-                    # Parse the response
-                    translated_lines = self.parse_numbered_text(response_text, batch_size)
+            if not copy_result:
+                error_msg = f"Critical: {service_name} copy button not found! Stopping bot."
+                self.main_window.log_message(error_msg)
+                self.main_window.status_section.set_bot_status("Bot stopped - Image not found", "red")
+                # Try to clean up before stopping
+                self.cleanup_chat(service_name, config, assets_folder)
+                return None, error_msg
 
-                    # Clean up chat
-                    self.cleanup_chat(service_name, config, assets_folder)
+            time.sleep(0.5)
+            # Get response from clipboard
+            response_text = pyperclip.paste()
 
-                    return translated_lines, None
-                else:
-                    self.main_window.log_message(f"Failed to find copy button in {service_name}")
-            else:
-                self.main_window.log_message(f"Action icons not found in {service_name}")
+            # Parse the response
+            translated_lines = self.parse_numbered_text(response_text, batch_size)
 
-            # Clean up even if failed
+            # Clean up chat
             self.cleanup_chat(service_name, config, assets_folder)
 
-            return None, "Failed to get response"
+            return translated_lines, None
 
         except Exception as e:
-            self.main_window.log_message(f"{service_name} bot error: {str(e)}")
-            return None, str(e)
+            error_msg = f"{service_name} bot error: {str(e)}"
+            self.main_window.log_message(error_msg)
+            self.main_window.status_section.set_bot_status("Bot stopped - Error", "red")
+            return None, error_msg
 
     def cleanup_chat(self, service_name, config, assets_folder):
         """Generic cleanup function for all services"""
@@ -242,7 +256,11 @@ class WebBotServices:
 
             # Find chat option region at top of screen
             screen_width, _ = pyautogui.size()
-            top_region = (0, 50, screen_width, 300)  # Top 300px of screen
+
+            if service_name =="Perplexity":
+                top_region = (screen_width/2, 0, screen_width, 100)
+            else:
+                top_region = (0, 0, screen_width/2, 100)
 
             # Click more/options button
             more_clicked = find_and_click(
@@ -251,8 +269,7 @@ class WebBotServices:
                 click=True,
                 max_attempts=3,
                 delay_between=1.0,
-                confidence=0.85,
-                log_func=self.main_window.log_message
+                confidence=0.85
             )
 
             if more_clicked:
@@ -264,8 +281,7 @@ class WebBotServices:
                     click=True,
                     max_attempts=3,
                     delay_between=1.0,
-                    confidence=0.85,
-                    log_func=self.main_window.log_message
+                    confidence=0.85
                 )
 
                 if delete_clicked:
@@ -277,8 +293,7 @@ class WebBotServices:
                         click=True,
                         max_attempts=3,
                         delay_between=1.0,
-                        confidence=0.85,
-                        log_func=self.main_window.log_message
+                        confidence=0.85
                     )
 
                     if confirm_clicked:
