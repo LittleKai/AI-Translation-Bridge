@@ -200,7 +200,8 @@ class TranslationProcessor:
                         self.main_window.log_message(f"Successfully loaded prompt for {source_lang}, type: {prompt_type}")
                         # Add format placeholders and additional instructions
                         # These will be replaced with actual values later
-                        prompt_with_format = prompt.strip() + "\n{count_info}\nVẫn giữ định dạng đánh số như bản gốc (1., 2., ...).\nChỉ trả về các dòng dịch được đánh số, không viết thêm bất kỳ nội dung nào khác.\nĐây là văn bản cần chuyển ngữ:\n{text}"
+                        prompt_with_format = prompt.strip() + "\n{count_info}\nVẫn giữ định dạng đánh số như bản gốc (1., 2., ...).\n" \
+                                                              "\nChỉ trả về các dòng dịch được đánh số, không viết thêm bất kỳ nội dung nào khác.\nĐây là văn bản cần chuyển ngữ:\n{text}"
                         return prompt_with_format
                     else:
                         self.main_window.log_message(f"Error: Prompt is empty for {source_lang}, type: {prompt_type}")
@@ -455,57 +456,32 @@ class TranslationProcessor:
         """Parse numbered text into list of translations"""
         lines = []
 
-        # Remove AI's additional questions/comments at the end
-        unwanted_patterns = [
-            r'\*{3,}.*?$',  # Remove *** and everything after
-            r'---+.*?$',     # Remove --- and everything after
-            r'={3,}.*?$',    # Remove === and everything after
-            r'_{3,}.*?$',    # Remove ___ and everything after
-            # Vietnamese AI questions
-            r'Bạn có hài lòng.*?$',
-            r'Bạn có muốn.*?$',
-            r'Có cần.*?$',
-            r'Nếu bạn.*?$',
-            r'Hãy cho tôi biết.*?$',
-            # English AI questions
-            r'Would you like.*?$',
-            r'Do you want.*?$',
-            r'Is there.*?$',
-            r'Let me know.*?$',
-            r'Please let me know.*?$',
-        ]
-
-        # Apply all cleaning patterns
-        cleaned_text = text
-        for pattern in unwanted_patterns:
-            cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.IGNORECASE | re.DOTALL | re.MULTILINE)
-
-        # Find all numbered lines
+        # Find all numbered lines with pattern "number. text"
         pattern = r'(\d+)\.\s*(.*?)(?=\n\d+\.|$)'
-        matches = re.findall(pattern, cleaned_text, re.DOTALL)
+        matches = re.findall(pattern, text, re.DOTALL)
 
         if matches:
             # Create dictionary with line number as key
             numbered_lines = {}
             for num, content in matches:
-                # Clean up the content
-                content = content.strip()
-                # Additional cleaning for each line
-                for pattern in unwanted_patterns:
-                    content = re.sub(pattern, '', content, flags=re.IGNORECASE | re.DOTALL)
-                content = content.strip()
-
                 line_num = int(num)
-                if 1 <= line_num <= expected_count:  # Only keep valid line numbers
+                if 1 <= line_num <= expected_count:
+                    # Clean up the content - remove \r if present
+                    content = content.strip().replace('\r', '')
+
+                    # Special handling for the last line in batch
+                    if line_num == expected_count:
+                        content = TranslationProcessor.clean_last_line_content(content)
+
                     numbered_lines[line_num] = content
 
             # Check if line 1 is missing but line 2 exists
             if 1 not in numbered_lines and 2 in numbered_lines:
                 # Extract text before "2." as content for line 1
-                pre_match = re.search(r'^(.*?)(?=\n?2\.)', cleaned_text, re.DOTALL)
+                pre_match = re.search(r'^(.*?)(?=\n?2\.)', text, re.DOTALL)
                 if pre_match:
-                    pre_text = pre_match.group(1).strip()
-                    if pre_text and not re.match(r'^\d+\.', pre_text):  # Make sure it's not another numbered line
+                    pre_text = pre_match.group(1).strip().replace('\r', '')
+                    if pre_text and not re.match(r'^\d+\.', pre_text):
                         numbered_lines[1] = pre_text
 
             # Fill in all lines in order
@@ -516,17 +492,70 @@ class TranslationProcessor:
                     lines.append("")  # Missing line
         else:
             # Fallback: split by newline and clean
-            text_lines = cleaned_text.strip().split('\n')
+            text_lines = text.strip().split('\n')
             for i, line in enumerate(text_lines[:expected_count]):
-                # Remove line numbers if present
-                cleaned = re.sub(r'^\d+\.\s*', '', line).strip()
-                # Apply additional cleaning
-                for pattern in unwanted_patterns:
-                    cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
-                lines.append(cleaned.strip())
+                # Remove line numbers if present and \r characters
+                cleaned = re.sub(r'^\d+\.\s*', '', line).strip().replace('\r', '')
+
+                # Special handling for the last line in fallback mode
+                if i == expected_count - 1:  # Last line (0-indexed)
+                    cleaned = TranslationProcessor.clean_last_line_content(cleaned)
+
+                lines.append(cleaned)
 
             # Pad with empty strings if needed
             while len(lines) < expected_count:
                 lines.append("")
 
         return lines
+
+    @staticmethod
+    def clean_last_line_content(content):
+        """
+        Clean AI-added comments strictly based on patterns.
+        If a separator or keyword pattern is found, remove everything after/including it.
+        """
+        if not content:
+            return content
+
+        # 1. HARD SEPARATORS (Các ký tự phân cách rõ ràng)
+        # Nếu tìm thấy các ký tự này, cắt bỏ toàn bộ nội dung phía sau nó.
+        separator_patterns = ['***', '---', '===', '___', '•••']
+
+        for separator in separator_patterns:
+            if separator in content:
+                # Lấy phần text trước separator đầu tiên tìm thấy
+                return content.split(separator)[0].strip()
+
+        # 2. KEYWORD PATTERNS (Các cụm từ bắt đầu câu hỏi/nhận xét của AI)
+        # Kiểm tra dòng cuối cùng có bắt đầu bằng các từ khóa này không.
+        ai_start_phrases = [
+            'bạn muốn', 'bạn có', 'có muốn', 'có hài lòng',
+            'would you', 'do you', 'let me know', 'is there',
+            'có cần', 'nếu bạn', 'hãy cho', 'please',
+            'tôi có thể', 'i can', 'if you', 'feel free'
+        ]
+
+        lines = content.split('\n')
+        if not lines:
+            return content
+
+        # Duyệt ngược từ dòng cuối cùng lên để tìm dòng có nội dung
+        for i in range(len(lines) - 1, -1, -1):
+            current_line = lines[i].strip().lower()
+
+            # Bỏ qua các dòng trống ở cuối
+            if not current_line:
+                continue
+
+            # Nếu dòng cuối cùng (có nội dung) bắt đầu bằng keyword
+            if any(current_line.startswith(phrase) for phrase in ai_start_phrases):
+                # Trả về toàn bộ nội dung TRƯỚC dòng đó
+                return '\n'.join(lines[:i]).strip()
+
+            # Nếu dòng cuối cùng có nội dung nhưng KHÔNG khớp pattern,
+            # dừng lại ngay (không xóa nhầm nội dung truyện/bài viết)
+            break
+
+        return content
+
