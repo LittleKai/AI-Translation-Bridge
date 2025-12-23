@@ -302,13 +302,9 @@ class TranslationProcessor:
             except Exception as e:
                 self.main_window.log_message(f"Warning: Could not read existing output: {e}")
 
-        # Find IDs that need processing - prioritize failed and missing IDs
-        # 1. IDs in input range that are not in output at all
+        # Find IDs that need processing
         missing_ids = all_input_ids - set(existing_results.keys())
-        # 2. IDs in input range that failed previously
         retry_ids = all_input_ids & failed_ids
-
-        # Combine both sets and sort to prioritize smaller IDs
         ids_to_process = sorted(missing_ids | retry_ids)
 
         self.main_window.log_message(f"Analysis of IDs to process:")
@@ -332,38 +328,51 @@ class TranslationProcessor:
             self.main_window.log_message("All IDs in range already have valid translations. Nothing to process.")
             return
 
-        # Create dataframe of rows to process, sorted by ID
-        df_to_process = df[df['id'].isin(ids_to_process)]
-        df_to_process = df_to_process.sort_values('id')  # Sort by ID to process smallest first
-
-        self.main_window.log_message(f"Prepared {len(df_to_process)} rows for processing (sorted by ID)")
-
         # Set total for progress tracking
         self.total_input_rows = len(all_input_ids)
-        self.processed_rows = len(completed_ids & all_input_ids)  # Only count completed in our range
+        self.processed_rows = len(completed_ids & all_input_ids)
 
-        # Process in batches
+        # Process IDs in batches
         batch_size = int(batch_size) if batch_size else 10
-        total_batches = (len(df_to_process) - 1) // batch_size + 1 if len(df_to_process) > 0 else 0
+        total_batches = (len(ids_to_process) - 1) // batch_size + 1 if len(ids_to_process) > 0 else 0
         rows_processed_count = 0
 
-        for batch_num, i in enumerate(range(0, len(df_to_process), batch_size), 1):
+        # Process IDs directly from the list, not from dataframe
+        for batch_num in range(1, total_batches + 1):
             if not self.is_running:
                 self.main_window.log_message("Processing stopped by user")
                 break
 
-            batch = df_to_process.iloc[i:i+batch_size]
-            batch_ids = batch['id'].tolist()
-            self.main_window.log_message(f"Processing batch {batch_num}/{total_batches} (IDs: {min(batch_ids)}-{max(batch_ids)}, {len(batch)} rows)")
+            # Get batch of IDs
+            batch_start_idx = (batch_num - 1) * batch_size
+            batch_end_idx = min(batch_start_idx + batch_size, len(ids_to_process))
+            batch_ids = ids_to_process[batch_start_idx:batch_end_idx]
+
+            # Get actual data for these specific IDs only
+            batch_df = df[df['id'].isin(batch_ids)].sort_values('id')
+
+            if len(batch_df) != len(batch_ids):
+                self.main_window.log_message(f"Warning: Expected {len(batch_ids)} rows but found {len(batch_df)}")
+                # Some IDs might not have data in input file
+                missing_in_input = set(batch_ids) - set(batch_df['id'].tolist())
+                if missing_in_input:
+                    self.main_window.log_message(f"  IDs not found in input: {sorted(missing_in_input)}")
+
+            if len(batch_df) == 0:
+                self.main_window.log_message(f"Skipping batch {batch_num} - no data found for IDs: {batch_ids}")
+                continue
+
+            actual_batch_ids = batch_df['id'].tolist()
+            self.main_window.log_message(f"Processing batch {batch_num}/{total_batches} (IDs: {min(actual_batch_ids)}-{max(actual_batch_ids)}, {len(batch_df)} rows)")
 
             # Create batch text
             batch_lines = []
-            for j, (_, row) in enumerate(batch.iterrows(), 1):
+            for j, (_, row) in enumerate(batch_df.iterrows(), 1):
                 batch_lines.append(f"{j}. {row['text']}")
             batch_text = "\n".join(batch_lines)
 
             # Format prompt with actual values
-            count_info = f"Source text consists of {len(batch)} numbered lines from 1 to {len(batch)}."
+            count_info = f"Source text consists of {len(batch_df)} numbered lines from 1 to {len(batch_df)}."
             prompt = prompt_template.format(count_info=count_info, text=batch_text)
 
             # Call appropriate API
@@ -381,22 +390,22 @@ class TranslationProcessor:
 
             if translated_text:
                 # Parse translated text
-                translations = self.parse_numbered_text(translated_text, len(batch))
+                translations = self.parse_numbered_text(translated_text, len(batch_df))
                 successful_count = sum(1 for t in translations if t)
-                self.main_window.log_message(f"Batch {batch_num} completed: {successful_count}/{len(batch)} translations successful")
+                self.main_window.log_message(f"Batch {batch_num} completed: {successful_count}/{len(batch_df)} translations successful")
 
                 # Update results
-                for (idx, row), translation in zip(batch.iterrows(), translations):
+                for (idx, row), translation in zip(batch_df.iterrows(), translations):
                     existing_results[row['id']] = {
                         'id': row['id'],
                         'raw': row['text'],
                         'edit': translation,
-                        'status': '' if translation else 'failed'  # Empty status for successful
+                        'status': '' if translation else 'failed'
                     }
             else:
                 # Mark batch as failed
                 self.main_window.log_message(f"Batch {batch_num} failed: {error_msg}")
-                for idx, row in batch.iterrows():
+                for idx, row in batch_df.iterrows():
                     existing_results[row['id']] = {
                         'id': row['id'],
                         'raw': row['text'],
@@ -404,9 +413,9 @@ class TranslationProcessor:
                         'status': 'failed'
                     }
 
-            rows_processed_count += len(batch)
+            rows_processed_count += len(batch_df)
 
-            # Save and sort every 1000 rows or at the end
+            # Save and sort periodically
             if rows_processed_count >= 1000 or batch_num == total_batches:
                 results_list = list(existing_results.values())
                 results_df = pd.DataFrame(results_list)

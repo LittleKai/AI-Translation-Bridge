@@ -113,14 +113,9 @@ class BotController:
             # Get all IDs in the filtered range
             all_input_ids = set(df['id'].tolist())
 
-            # Find IDs that need processing:
-            # 1. Missing IDs (in input range but not in output at all)
+            # Find IDs that need processing
             missing_ids = all_input_ids - set(existing_results.keys())
-
-            # 2. Failed IDs (in input range and previously failed)
             retry_ids = all_input_ids & failed_ids
-
-            # Combine and sort to prioritize smaller IDs first
             ids_to_process = sorted(missing_ids | retry_ids)
 
             if ids_to_process:
@@ -135,24 +130,30 @@ class BotController:
                 self.main_window.root.after(0, self.main_window.stop_bot)
                 return
 
-            # Filter dataframe to only include IDs that need processing
-            df = df[df['id'].isin(ids_to_process)]
-            df = df.sort_values('id')  # Sort by ID to process in order
-
             # Get batch settings
             batch_size = int(processing_settings.get('batch_size', 10))
+            total_batches = (len(ids_to_process) - 1) // batch_size + 1 if len(ids_to_process) > 0 else 0
 
-            # Process all batches continuously
-            total_batches = (len(df) - 1) // batch_size + 1 if len(df) > 0 else 0
-
-            for batch_num, i in enumerate(range(0, len(df), batch_size), 1):
+            # Process batches from the ID list directly
+            for batch_num in range(1, total_batches + 1):
                 if not self.running:
                     self.main_window.log_message("Processing stopped by user")
                     break
 
-                batch = df.iloc[i:min(i+batch_size, len(df))]
-                batch_ids = batch['id'].tolist()
-                self.main_window.log_message(f"Processing batch {batch_num}/{total_batches} (IDs: {batch_ids[0]}-{batch_ids[-1]}, {len(batch)} rows)")
+                # Get batch of IDs
+                batch_start_idx = (batch_num - 1) * batch_size
+                batch_end_idx = min(batch_start_idx + batch_size, len(ids_to_process))
+                batch_ids = ids_to_process[batch_start_idx:batch_end_idx]
+
+                # Get actual data for these specific IDs only
+                batch = df[df['id'].isin(batch_ids)].sort_values('id')
+
+                if len(batch) == 0:
+                    self.main_window.log_message(f"Skipping batch {batch_num} - no data found for IDs: {batch_ids}")
+                    continue
+
+                actual_batch_ids = batch['id'].tolist()
+                self.main_window.log_message(f"Processing batch {batch_num}/{total_batches} (IDs: {actual_batch_ids[0]}-{actual_batch_ids[-1]}, {len(batch)} rows)")
 
                 # Create batch text without trailing newline
                 batch_lines = []
@@ -176,7 +177,7 @@ class BotController:
                             'id': row['id'],
                             'raw': row['text'],
                             'edit': translation,
-                            'status': ''  # Empty status for successful translations
+                            'status': ''
                         }
                 else:
                     self.main_window.log_message(f"Failed to get translations: {error}")

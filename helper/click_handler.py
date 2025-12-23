@@ -7,7 +7,7 @@ from helper.recognizer import match_template
 def find_and_click(img_path: str, region: Optional[Tuple[int, int, int, int]] = None,
                    max_attempts: int = 1, delay_between: float = 1.0,
                    click: bool = True, confidence: float = 0.8, log_attempts: bool = True,
-                   use_random: bool = True, return_all_coords: bool = False,
+                   use_random: bool = False, return_all_coords: bool = False,
                    check_stop_func=None, log_func=None):
     """
     Find and optionally click an image on screen with random clicking support

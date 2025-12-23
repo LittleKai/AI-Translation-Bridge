@@ -153,7 +153,7 @@ class WebBotServices:
 
             # Step 4: Wait for processing to complete
             screen_width, screen_height = pyautogui.size()
-            processing_region = (0, screen_height - 300, screen_width, 300)  # Bottom 300px of screen
+            processing_region = (screen_width/2, screen_height - 200, screen_width*3/4, 200)  # Bottom 200px of screen
 
             is_processing = True
             attempt_count = 0
@@ -252,9 +252,9 @@ class WebBotServices:
             screen_width, _ = pyautogui.size()
 
             if service_name == "Perplexity":
-                top_region = (screen_width/2, 0, screen_width, 100)
+                top_region = (screen_width/2, 0, screen_width, 150)
             else:
-                top_region = (0, 0, screen_width/2, 100)
+                top_region = (0, 0, screen_width/2, 150)
 
             # Click more/options button
             more_clicked = find_and_click(
