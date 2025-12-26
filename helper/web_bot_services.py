@@ -179,22 +179,26 @@ class WebBotServices:
                     is_processing = False
                     self.main_window.log_message("Processing completed")
 
+            action_icons = None
             # Step 5: Scroll to bottom and find copy button
-            for i in range(2):
+            for i in range(3):
                 pyautogui.click(screen_width // 2, screen_height // 2)
+                time.sleep(0.3)
+                pyautogui.press('end')
                 time.sleep(0.5)
                 pyautogui.press('end')
                 time.sleep(0.5)
-
-            # Step 6: Find action icons and copy response
-            action_icons = find_and_click(
+                # Step 6: Find action icons and copy response
+                action_icons = find_and_click(
                 f"{assets_folder}/{config['action_icons']}",
                 click=False,
-                max_attempts=5,
-                delay_between=1.0,
-                confidence=0.85,
+                max_attempts=2,
+                delay_between=0.5,
+                confidence=0.8,
                 return_all_coords=False
-            )
+                )
+                if not action_icons:
+                    break
 
             if not action_icons:
                 error_msg = f"Critical: {service_name} action icons not found! Stopping bot."
