@@ -2,10 +2,12 @@
 pass_link.txt
 window_settings.json
 AI_Bridge.iml
+AI_Translation_Bridge.iml
 .key_store
 bot_settings.json
 settings.json
 key_validator.py
+version_info.txt
 
 # Ignore specific folders
 0. Temp/

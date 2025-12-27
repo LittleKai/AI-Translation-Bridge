@@ -21,7 +21,11 @@ class AITranslationBridgeGUI:
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("AI Translation Bridge")
+        self.root.title("AI Translation Bridge - Developed by LittleKai")
+
+
+        # window icon
+        self.set_window_icon()
 
         # Initialize variables
         self.init_variables()
@@ -48,6 +52,21 @@ class AITranslationBridgeGUI:
 
         # Check key validation after loading settings
         self.check_key_validation()
+
+    def set_window_icon(self):
+        """Set application window icon"""
+        try:
+            icon_path = "assets/icon.ico"
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+
+        # icon_path = "assets/icon.png"
+        # if os.path.exists(icon_path):
+        #     icon = tk.PhotoImage(file=icon_path)
+        #     self.root.iconphoto(True, icon)
+
+        except Exception as e:
+            print(f"Could not load window icon: {e}")
 
     def init_variables(self):
         """Initialize all GUI variables"""
