@@ -121,6 +121,93 @@ class PromptHelper:
         return df
 
     @staticmethod
+    def create_batch_text(batch_df):
+        """Create numbered text from batch dataframe"""
+        batch_lines = []
+        for j, (_, row) in enumerate(batch_df.iterrows(), 1):
+            batch_lines.append(f"{j}. {row['text']}")
+        return "\n".join(batch_lines)
+
+    @staticmethod
+    def save_results(existing_results, output_path):
+        """Save results to CSV or Excel file based on extension"""
+        if not existing_results:
+            print(f"[ERROR] No results to save")
+            return False
+
+        try:
+            results_list = list(existing_results.values())
+            results_df = pd.DataFrame(results_list)
+            results_df_sorted = results_df.sort_values('id')
+
+            # Check output format by extension
+            _, ext = os.path.splitext(output_path)
+            ext = ext.lower()
+
+            print(f"[DEBUG] Saving to {output_path} with extension: {ext}")
+
+            if ext in ['.xlsx', '.xls']:
+                try:
+                    # Clean data before saving to Excel
+                    print(f"[DEBUG] Preparing Excel data...")
+
+                    # Clean columns
+                    for col in results_df_sorted.columns:
+                        if col != 'id':
+                            # Replace NaN and convert to string
+                            results_df_sorted[col] = results_df_sorted[col].fillna('')
+                            results_df_sorted[col] = results_df_sorted[col].astype(str)
+
+                    # Ensure id column is numeric
+                    if 'id' in results_df_sorted.columns:
+                        results_df_sorted['id'] = pd.to_numeric(results_df_sorted['id'], errors='coerce').fillna(0).astype(int)
+
+                    print(f"[DEBUG] Writing Excel file with openpyxl...")
+
+                    # Create directory if not exists
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+                    # Write Excel file
+                    results_df_sorted.to_excel(
+                        output_path,
+                        index=False,
+                        engine='openpyxl'
+                    )
+
+                    print(f"[SUCCESS] Excel file saved: {output_path}")
+                    return True
+
+                except Exception as e:
+                    print(f"[ERROR] Failed to save Excel: {e}")
+                    print(f"[ERROR] Full traceback:")
+                    import traceback
+                    traceback.print_exc()
+
+                    # Fallback to CSV
+                    csv_path = output_path.replace('.xlsx', '.csv').replace('.xls', '.csv')
+                    print(f"[INFO] Falling back to CSV: {csv_path}")
+
+                    try:
+                        results_df_sorted.to_csv(csv_path, index=False)
+                        print(f"[SUCCESS] CSV fallback saved: {csv_path}")
+                        return True
+                    except Exception as csv_error:
+                        print(f"[ERROR] CSV fallback also failed: {csv_error}")
+                        return False
+            else:
+                # Save as CSV
+                print(f"[DEBUG] Saving as CSV...")
+                results_df_sorted.to_csv(output_path, index=False)
+                print(f"[SUCCESS] CSV file saved: {output_path}")
+                return True
+
+        except Exception as e:
+            print(f"[ERROR] Unexpected error in save_results: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    @staticmethod
     def load_existing_results(output_path):
         """Load and analyze existing output file (CSV or Excel)"""
         existing_results = {}
@@ -134,58 +221,44 @@ class PromptHelper:
                 ext = ext.lower()
 
                 if ext in ['.xlsx', '.xls']:
-                    existing_df = pd.read_excel(output_path, engine='openpyxl')
+                    # Try to read with xlrd engine first for better performance
+                    try:
+                        existing_df = pd.read_excel(output_path, engine='xlrd')
+                    except:
+                        # Fallback to openpyxl
+                        existing_df = pd.read_excel(output_path, engine='openpyxl')
                 else:
                     existing_df = pd.read_csv(output_path)
 
                 if not existing_df.empty:
+                    # Process in chunks for better performance with large files
                     for _, row in existing_df.iterrows():
                         row_id = row['id']
+
+                        # Handle potential data type issues
+                        edit_value = row.get('edit', '')
+                        if pd.isna(edit_value):
+                            edit_value = ''
+                        else:
+                            edit_value = str(edit_value)
+
                         existing_results[row_id] = {
                             'id': row_id,
-                            'raw': row.get('raw', ''),
-                            'edit': row.get('edit', ''),
-                            'status': row.get('status', '')
+                            'raw': str(row.get('raw', '')),
+                            'edit': edit_value,
+                            'status': str(row.get('status', ''))
                         }
 
                         # Check if translation exists and is valid
-                        edit_value = row.get('edit', '')
-                        if edit_value and str(edit_value).strip() and str(edit_value).strip() != 'nan':
+                        if edit_value and edit_value.strip() and edit_value.strip() != 'nan':
                             completed_ids.add(row_id)
                         else:
                             failed_ids.add(row_id)
-            except:
-                pass
+            except Exception as e:
+                # Log error but don't crash
+                print(f"Warning: Error loading existing results: {e}")
 
         return existing_results, completed_ids, failed_ids
-
-    @staticmethod
-    def create_batch_text(batch_df):
-        """Create numbered text from batch dataframe"""
-        batch_lines = []
-        for j, (_, row) in enumerate(batch_df.iterrows(), 1):
-            batch_lines.append(f"{j}. {row['text']}")
-        return "\n".join(batch_lines)
-
-    @staticmethod
-    def save_results(existing_results, output_path):
-        """Save results to CSV or Excel file based on extension"""
-        if existing_results:
-            results_list = list(existing_results.values())
-            results_df = pd.DataFrame(results_list)
-            results_df_sorted = results_df.sort_values('id')
-
-            # Check output format by extension
-            _, ext = os.path.splitext(output_path)
-            ext = ext.lower()
-
-            if ext in ['.xlsx', '.xls']:
-                results_df_sorted.to_excel(output_path, index=False, engine='openpyxl')
-            else:
-                results_df_sorted.to_csv(output_path, index=False)
-
-            return True
-        return False
 
     @staticmethod
     def find_next_batch(df, output_path, batch_size):

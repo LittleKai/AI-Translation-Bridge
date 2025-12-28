@@ -22,18 +22,32 @@ class TranslationProcessor:
         """Update progress display in status section"""
         if self.current_output_file and os.path.exists(self.current_output_file):
             try:
-                # Check file extension
+                # Get file extension
                 _, ext = os.path.splitext(self.current_output_file)
                 ext = ext.lower()
 
                 if ext in ['.xlsx', '.xls']:
-                    output_df = pd.read_excel(self.current_output_file, engine='openpyxl')
+                    try:
+                        # Try reading with openpyxl
+                        output_df = pd.read_excel(self.current_output_file, engine='openpyxl')
+                    except Exception as e:
+                        # If Excel file is corrupt, try CSV fallback
+                        csv_path = self.current_output_file.replace('.xlsx', '.csv').replace('.xls', '.csv')
+                        if os.path.exists(csv_path):
+                            output_df = pd.read_csv(csv_path)
+                        else:
+                            self.processed_rows = 0
+                            self.main_window.status_section.set_progress(
+                                self.processed_rows,
+                                self.total_input_rows,
+                                self.is_running
+                            )
+                            return
                 else:
                     output_df = pd.read_csv(self.current_output_file)
 
                 # Count rows with text in edit column as processed
                 if 'edit' in output_df.columns:
-                    # Count non-empty and non-NaN values
                     self.processed_rows = len(output_df[output_df['edit'].notna() & (output_df['edit'] != '')])
                 else:
                     self.processed_rows = 0
@@ -166,7 +180,11 @@ class TranslationProcessor:
             ext = ext.lower()
 
             if ext in ['.xlsx', '.xls']:
-                df = pd.read_excel(input_file, engine='openpyxl')
+                # Try xlrd first for better performance
+                try:
+                    df = pd.read_excel(input_file, engine='xlrd')
+                except:
+                    df = pd.read_excel(input_file, engine='openpyxl')
                 self.main_window.log_message(f"Loaded {len(df)} rows from Excel file")
             else:
                 df = pd.read_csv(input_file)
@@ -311,7 +329,6 @@ class TranslationProcessor:
             # Format prompt with actual values
             count_info = f"Nội dung bao gồm {len(batch_df)} dòng có đánh số từ 1 đến {len(batch_df)}."
             prompt = prompt_template.format(count_info=count_info, text=batch_text)
-            print(f'Prompt: {prompt}')
             # Call appropriate API
             translated_text = None
             error_msg = None
@@ -352,41 +369,36 @@ class TranslationProcessor:
 
             rows_processed_count += len(batch_df)
 
-            # Save intermediate results after each batch
-            if existing_results:
-                results_list = list(existing_results.values())
-                results_df = pd.DataFrame(results_list)
-                results_df_sorted = results_df.sort_values('id')
-                results_df_sorted.to_csv(output_file, index=False)
-
-                # Update progress after each batch
-                self.update_progress()
-
-                if rows_processed_count >= 1000:
-                    self.main_window.log_message(f"Saved and sorted after {rows_processed_count} rows")
-                    rows_processed_count = 0
-
-            # Small delay between batches
-            if batch_num < total_batches and self.is_running:
-                self.main_window.log_message(f"Waiting 2 seconds before next batch...")
-                time.sleep(2)
-
         # Final save
         if existing_results:
-            results_list = list(existing_results.values())
-            results_df = pd.DataFrame(results_list)
-            results_df_sorted = results_df.sort_values('id')
-            results_df_sorted.to_csv(output_file, index=False)
+            self.main_window.log_message(f"Performing final save of {len(existing_results)} rows...")
 
-            # Final count
-            completed_count = sum(1 for r in results_list if r.get('edit') and str(r.get('edit')).strip())
-            failed_count = len(results_list) - completed_count
+            # Use PromptHelper to save with proper format detection
+            save_success = PromptHelper.save_results(existing_results, output_file)
 
-            self.main_window.log_message(f"Translation completed!")
-            self.main_window.log_message(f"Total rows in output: {len(results_list)}")
-            self.main_window.log_message(f"Successful: {completed_count} rows")
-            self.main_window.log_message(f"Failed/Empty: {failed_count} rows")
-            self.main_window.log_message(f"Output saved to: {output_file}")
+            if save_success:
+                # Final count
+                results_list = list(existing_results.values())
+                completed_count = sum(1 for r in results_list if r.get('edit') and str(r.get('edit')).strip())
+                failed_count = len(results_list) - completed_count
+
+                self.main_window.log_message(f"Translation completed!")
+                self.main_window.log_message(f"Total rows in output: {len(results_list)}")
+                self.main_window.log_message(f"Successful: {completed_count} rows")
+                self.main_window.log_message(f"Failed/Empty: {failed_count} rows")
+                self.main_window.log_message(f"Output saved to: {output_file}")
+
+                # Check actual file type saved
+                if os.path.exists(output_file):
+                    actual_size = os.path.getsize(output_file)
+                    self.main_window.log_message(f"File size: {actual_size:,} bytes")
+                else:
+                    # Check for CSV fallback
+                    csv_path = output_file.replace('.xlsx', '.csv').replace('.xls', '.csv')
+                    if os.path.exists(csv_path):
+                        self.main_window.log_message(f"Note: Saved as CSV fallback: {csv_path}")
+            else:
+                self.main_window.log_message(f"ERROR: Failed to save final results!")
 
 
     @staticmethod

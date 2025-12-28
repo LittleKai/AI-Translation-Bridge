@@ -188,14 +188,13 @@ class AITranslationBridgeGUI:
             input_file = translation_settings.get('input_file')
 
             if not input_file or not os.path.exists(input_file):
-                # No input file or file doesn't exist
                 self.status_section.set_progress(0, 0, self.is_running)
                 return
 
             # Read input file to get total count
             import pandas as pd
             try:
-                # Check file extension to determine how to read
+                # Check file extension
                 _, ext = os.path.splitext(input_file)
                 ext = ext.lower()
 
@@ -234,28 +233,34 @@ class AITranslationBridgeGUI:
                 processed_rows = 0
                 if os.path.exists(output_path):
                     try:
-                        # Also check output file extension
-                        _, out_ext = os.path.splitext(output_path)
-                        out_ext = out_ext.lower()
+                        # Check extension
+                        _, ext_out = os.path.splitext(output_path)
+                        ext_out = ext_out.lower()
 
-                        if out_ext in ['.xlsx', '.xls']:
-                            output_df = pd.read_excel(output_path, engine='openpyxl')
+                        if ext_out in ['.xlsx', '.xls']:
+                            try:
+                                output_df = pd.read_excel(output_path, engine='openpyxl')
+                            except:
+                                # Try CSV fallback if Excel is corrupt
+                                csv_path = output_path.replace('.xlsx', '.csv').replace('.xls', '.csv')
+                                if os.path.exists(csv_path):
+                                    output_df = pd.read_csv(csv_path)
+                                else:
+                                    processed_rows = 0
                         else:
                             output_df = pd.read_csv(output_path)
 
-                        # Count rows with valid translations
-                        if 'edit' in output_df.columns:
+                        # Count only rows with valid translations
+                        if 'output_df' in locals() and 'edit' in output_df.columns:
                             processed_rows = len(output_df[output_df['edit'].notna() & (output_df['edit'] != '')])
-                        else:
-                            processed_rows = len(output_df)
-                    except:
-                        pass
+                    except Exception as e:
+                        # Log but don't crash
+                        processed_rows = 0
 
                 # Update progress display with running status
                 self.status_section.set_progress(processed_rows, total_rows, self.is_running)
 
             except Exception as e:
-                self.log_message(f"Error updating progress: {e}")
                 self.status_section.set_progress(0, 0, self.is_running)
 
         except Exception as e:
