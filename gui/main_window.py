@@ -195,7 +195,14 @@ class AITranslationBridgeGUI:
             # Read input file to get total count
             import pandas as pd
             try:
-                df = pd.read_csv(input_file)
+                # Check file extension to determine how to read
+                _, ext = os.path.splitext(input_file)
+                ext = ext.lower()
+
+                if ext in ['.xlsx', '.xls']:
+                    df = pd.read_excel(input_file, engine='openpyxl')
+                else:
+                    df = pd.read_csv(input_file)
 
                 # Filter by ID range if specified
                 start_id = translation_settings.get('start_id', '')
@@ -227,8 +234,20 @@ class AITranslationBridgeGUI:
                 processed_rows = 0
                 if os.path.exists(output_path):
                     try:
-                        output_df = pd.read_csv(output_path)
-                        processed_rows = len(output_df)
+                        # Also check output file extension
+                        _, out_ext = os.path.splitext(output_path)
+                        out_ext = out_ext.lower()
+
+                        if out_ext in ['.xlsx', '.xls']:
+                            output_df = pd.read_excel(output_path, engine='openpyxl')
+                        else:
+                            output_df = pd.read_csv(output_path)
+
+                        # Count rows with valid translations
+                        if 'edit' in output_df.columns:
+                            processed_rows = len(output_df[output_df['edit'].notna() & (output_df['edit'] != '')])
+                        else:
+                            processed_rows = len(output_df)
                     except:
                         pass
 
@@ -236,6 +255,7 @@ class AITranslationBridgeGUI:
                 self.status_section.set_progress(processed_rows, total_rows, self.is_running)
 
             except Exception as e:
+                self.log_message(f"Error updating progress: {e}")
                 self.status_section.set_progress(0, 0, self.is_running)
 
         except Exception as e:
@@ -259,15 +279,14 @@ class AITranslationBridgeGUI:
                                     "4. Click 'Paste Response' to save results")
                 return
 
-        if not self.is_running and self.key_valid:
+            # Get selected service
+            ai_service = processing_settings.get('ai_service')
+
+            # Set running flag before starting
             self.is_running = True
 
             # Update progress display with running status
             self.update_progress_display()
-
-            # Get selected service
-            processing_settings = self.processing_tab.get_settings()
-            ai_service = processing_settings.get('ai_service')
 
             self.start_button.config(state="disabled")
             self.stop_button.config(state="normal")
@@ -302,24 +321,23 @@ class AITranslationBridgeGUI:
 
     def stop_bot(self):
         """Stop bot and exit compact mode"""
-        if self.is_running:
-            self.is_running = False
+        # Set flags first to stop processing
+        self.is_running = False
+        self.translation_processor.is_running = False
+        self.bot_controller.running = False
 
-            # Stop both processors
-            self.translation_processor.is_running = False
-            self.bot_controller.running = False
+        # Update UI
+        self.start_button.config(state="normal")
+        self.stop_button.config(state="disabled")
 
-            self.start_button.config(state="normal")
-            self.stop_button.config(state="disabled")
+        # Update progress display with stopped status
+        self.update_progress_display()
 
-            # Update progress display with stopped status
-            self.update_progress_display()
+        self.log_message("Bot stopped")
 
-            self.log_message("Bot stopped")
-
-            # Exit compact mode
-            if self.compact_mode:
-                self.toggle_compact_mode()
+        # Exit compact mode
+        if self.compact_mode:
+            self.toggle_compact_mode()
 
     def calculate_compact_height(self):
         """Calculate the required height for compact mode"""

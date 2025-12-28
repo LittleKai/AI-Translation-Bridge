@@ -22,13 +22,23 @@ class TranslationProcessor:
         """Update progress display in status section"""
         if self.current_output_file and os.path.exists(self.current_output_file):
             try:
-                output_df = pd.read_csv(self.current_output_file)
+                # Check file extension
+                _, ext = os.path.splitext(self.current_output_file)
+                ext = ext.lower()
+
+                if ext in ['.xlsx', '.xls']:
+                    output_df = pd.read_excel(self.current_output_file, engine='openpyxl')
+                else:
+                    output_df = pd.read_csv(self.current_output_file)
+
                 # Count rows with text in edit column as processed
                 if 'edit' in output_df.columns:
+                    # Count non-empty and non-NaN values
                     self.processed_rows = len(output_df[output_df['edit'].notna() & (output_df['edit'] != '')])
                 else:
                     self.processed_rows = 0
-            except:
+            except Exception as e:
+                self.main_window.log_message(f"Error reading output file for progress: {e}")
                 self.processed_rows = 0
         else:
             self.processed_rows = 0
@@ -114,8 +124,13 @@ class TranslationProcessor:
             self.is_running = False
             # Final progress update with stopped status
             self.update_progress()
-            # Update main window running status
-            self.main_window.root.after(0, self.set_main_window_stopped)
+            # Auto stop bot when completed
+            self.main_window.root.after(0, self.stop_main_window_bot)
+
+    def stop_main_window_bot(self):
+        """Stop the bot in main window"""
+        if self.main_window.is_running:
+            self.main_window.stop_bot()
 
     def set_main_window_stopped(self):
         """Set main window to stopped state"""
@@ -296,7 +311,7 @@ class TranslationProcessor:
             # Format prompt with actual values
             count_info = f"Nội dung bao gồm {len(batch_df)} dòng có đánh số từ 1 đến {len(batch_df)}."
             prompt = prompt_template.format(count_info=count_info, text=batch_text)
-
+            print(f'Prompt: {prompt}')
             # Call appropriate API
             translated_text = None
             error_msg = None
@@ -337,12 +352,14 @@ class TranslationProcessor:
 
             rows_processed_count += len(batch_df)
 
-            # Save and sort periodically
-            if rows_processed_count >= 1000 or batch_num == total_batches:
+            # Save intermediate results after each batch
+            if existing_results:
                 results_list = list(existing_results.values())
                 results_df = pd.DataFrame(results_list)
                 results_df_sorted = results_df.sort_values('id')
                 results_df_sorted.to_csv(output_file, index=False)
+
+                # Update progress after each batch
                 self.update_progress()
 
                 if rows_processed_count >= 1000:
@@ -479,4 +496,3 @@ class TranslationProcessor:
             break
 
         return content
-
