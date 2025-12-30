@@ -182,14 +182,29 @@ class AITranslationBridgeGUI:
 
     def update_progress_display(self):
         """Update progress display based on current input file and running status"""
+        # Run in thread if file is large
+        thread = threading.Thread(target=self._update_progress_display_thread, daemon=True)
+        thread.start()
+
+    def _update_progress_display_thread(self):
+        """Update progress display in background thread"""
         try:
             # Get translation settings
             translation_settings = self.translation_tab.get_settings()
             input_file = translation_settings.get('input_file')
 
             if not input_file or not os.path.exists(input_file):
-                self.status_section.set_progress(0, 0, self.is_running)
+                # No input file or file doesn't exist
+                self.root.after(0, self.status_section.set_progress, 0, 0, self.is_running)
                 return
+
+            # Check file size
+            file_size = os.path.getsize(input_file)
+            is_large_file = file_size > 10 * 1024 * 1024  # > 10MB
+
+            if is_large_file:
+                # Show loading indicator for large files
+                self.root.after(0, self.log_message, "Processing large file, please wait...")
 
             # Read input file to get total count
             import pandas as pd
@@ -201,7 +216,14 @@ class AITranslationBridgeGUI:
                 if ext in ['.xlsx', '.xls']:
                     df = pd.read_excel(input_file, engine='openpyxl')
                 else:
-                    df = pd.read_csv(input_file)
+                    # For large CSV files, read with chunksize
+                    if is_large_file:
+                        chunks = []
+                        for chunk in pd.read_csv(input_file, chunksize=10000):
+                            chunks.append(chunk)
+                        df = pd.concat(chunks, ignore_index=True)
+                    else:
+                        df = pd.read_csv(input_file)
 
                 # Filter by ID range if specified
                 start_id = translation_settings.get('start_id', '')
@@ -233,38 +255,27 @@ class AITranslationBridgeGUI:
                 processed_rows = 0
                 if os.path.exists(output_path):
                     try:
-                        # Check extension
                         _, ext_out = os.path.splitext(output_path)
                         ext_out = ext_out.lower()
 
                         if ext_out in ['.xlsx', '.xls']:
-                            try:
-                                output_df = pd.read_excel(output_path, engine='openpyxl')
-                            except:
-                                # Try CSV fallback if Excel is corrupt
-                                csv_path = output_path.replace('.xlsx', '.csv').replace('.xls', '.csv')
-                                if os.path.exists(csv_path):
-                                    output_df = pd.read_csv(csv_path)
-                                else:
-                                    processed_rows = 0
+                            output_df = pd.read_excel(output_path, engine='openpyxl')
                         else:
                             output_df = pd.read_csv(output_path)
-
-                        # Count only rows with valid translations
-                        if 'output_df' in locals() and 'edit' in output_df.columns:
-                            processed_rows = len(output_df[output_df['edit'].notna() & (output_df['edit'] != '')])
-                    except Exception as e:
-                        # Log but don't crash
-                        processed_rows = 0
+                        processed_rows = len(output_df)
+                    except:
+                        pass
 
                 # Update progress display with running status
-                self.status_section.set_progress(processed_rows, total_rows, self.is_running)
+                self.root.after(0, self.status_section.set_progress, processed_rows, total_rows, self.is_running)
 
             except Exception as e:
-                self.status_section.set_progress(0, 0, self.is_running)
+                self.root.after(0, self.status_section.set_progress, 0, 0, self.is_running)
+                if is_large_file:
+                    self.root.after(0, self.log_message, f"Error processing large file: {e}")
 
         except Exception as e:
-            self.status_section.set_progress(0, 0, self.is_running)
+            self.root.after(0, self.status_section.set_progress, 0, 0, self.is_running)
 
     def start_bot(self):
         """Start bot based on selected service type"""

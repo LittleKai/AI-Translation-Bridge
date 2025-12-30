@@ -208,55 +208,52 @@ class PromptHelper:
             return False
 
     @staticmethod
-    def load_existing_results(output_path):
-        """Load and analyze existing output file (CSV or Excel)"""
+    def load_existing_results(output_path, chunk_size=10000):
+        """Load and analyze existing output file with optimization for large files"""
         existing_results = {}
         completed_ids = set()
         failed_ids = set()
 
         if os.path.exists(output_path):
             try:
+                # Check file size
+                file_size = os.path.getsize(output_path)
+                is_large_file = file_size > 10 * 1024 * 1024  # > 10MB
+
                 # Check file extension
                 _, ext = os.path.splitext(output_path)
                 ext = ext.lower()
 
                 if ext in ['.xlsx', '.xls']:
-                    # Try to read with xlrd engine first for better performance
-                    try:
-                        existing_df = pd.read_excel(output_path, engine='xlrd')
-                    except:
-                        # Fallback to openpyxl
-                        existing_df = pd.read_excel(output_path, engine='openpyxl')
+                    existing_df = pd.read_excel(output_path, engine='openpyxl')
                 else:
-                    existing_df = pd.read_csv(output_path)
+                    # For large CSV files, read in chunks
+                    if is_large_file:
+                        chunks = []
+                        for chunk in pd.read_csv(output_path, chunksize=chunk_size):
+                            chunks.append(chunk)
+                        existing_df = pd.concat(chunks, ignore_index=True)
+                    else:
+                        existing_df = pd.read_csv(output_path)
 
                 if not existing_df.empty:
-                    # Process in chunks for better performance with large files
                     for _, row in existing_df.iterrows():
                         row_id = row['id']
-
-                        # Handle potential data type issues
-                        edit_value = row.get('edit', '')
-                        if pd.isna(edit_value):
-                            edit_value = ''
-                        else:
-                            edit_value = str(edit_value)
-
                         existing_results[row_id] = {
                             'id': row_id,
-                            'raw': str(row.get('raw', '')),
-                            'edit': edit_value,
-                            'status': str(row.get('status', ''))
+                            'raw': row.get('raw', ''),
+                            'edit': row.get('edit', ''),
+                            'status': row.get('status', '')
                         }
 
                         # Check if translation exists and is valid
-                        if edit_value and edit_value.strip() and edit_value.strip() != 'nan':
+                        edit_value = row.get('edit', '')
+                        if edit_value and str(edit_value).strip() and str(edit_value).strip() != 'nan':
                             completed_ids.add(row_id)
                         else:
                             failed_ids.add(row_id)
-            except Exception as e:
-                # Log error but don't crash
-                print(f"Warning: Error loading existing results: {e}")
+            except:
+                pass
 
         return existing_results, completed_ids, failed_ids
 

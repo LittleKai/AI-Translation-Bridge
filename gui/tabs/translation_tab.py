@@ -28,21 +28,39 @@ class TranslationTab:
         default_output = os.path.join(os.path.expanduser("~"), "Documents", "AIBridge")
         self.output_directory = tk.StringVar(value=default_output)
 
+        # Add timer for delayed updates
+        self.update_timer = None
+
     def bind_variable_changes(self):
         """Bind variable changes to auto-save"""
         variables = [
             self.input_file,
-            self.start_id,
-            self.stop_id,
             self.output_directory
         ]
 
         for var in variables:
             var.trace('w', lambda *args: self.main_window.save_settings())
 
-        self.start_id.trace('w', lambda *args: self.main_window.update_progress_display())
-        self.stop_id.trace('w', lambda *args: self.main_window.update_progress_display())
+        # Use delayed update for ID inputs
+        self.start_id.trace('w', lambda *args: self.delayed_update_progress())
+        self.stop_id.trace('w', lambda *args: self.delayed_update_progress())
         self.input_file.trace('w', lambda *args: [self.main_window.update_progress_display(), self.update_output_filename()])
+
+    # Thêm phương thức mới:
+    def delayed_update_progress(self):
+        """Update progress display with delay to avoid excessive processing"""
+        # Cancel previous timer if exists
+        if self.update_timer:
+            self.main_window.root.after_cancel(self.update_timer)
+
+        # Set new timer for 500ms delay
+        self.update_timer = self.main_window.root.after(500, self.execute_delayed_update)
+
+    def execute_delayed_update(self):
+        """Execute the delayed update"""
+        self.update_timer = None
+        self.main_window.save_settings()
+        self.main_window.update_progress_display()
 
     def create_content(self):
         """Create tab content"""

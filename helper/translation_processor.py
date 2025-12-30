@@ -173,22 +173,32 @@ class TranslationProcessor:
             self.main_window.log_message("Error: Failed to load translation prompt")
             return
 
-        # Read input file (CSV or Excel)
+        # Check file size
+        file_size = os.path.getsize(input_file)
+        is_large_file = file_size > 10 * 1024 * 1024  # > 10MB
+
+        if is_large_file:
+            self.main_window.log_message(f"Processing large file ({file_size / 1024 / 1024:.1f} MB)...")
+
+        # Read input file (CSV or Excel) with optimization for large files
         try:
             # Check file extension
             _, ext = os.path.splitext(input_file)
             ext = ext.lower()
 
             if ext in ['.xlsx', '.xls']:
-                # Try xlrd first for better performance
-                try:
-                    df = pd.read_excel(input_file, engine='xlrd')
-                except:
-                    df = pd.read_excel(input_file, engine='openpyxl')
+                df = pd.read_excel(input_file, engine='openpyxl')
                 self.main_window.log_message(f"Loaded {len(df)} rows from Excel file")
             else:
-                df = pd.read_csv(input_file)
-                self.main_window.log_message(f"Loaded {len(df)} rows from CSV file")
+                # For large CSV files, use optimized reading
+                if is_large_file:
+                    # Read with specific dtypes to reduce memory usage
+                    dtype_dict = {'id': 'int32', 'text': 'str'}
+                    df = pd.read_csv(input_file, dtype=dtype_dict, low_memory=False)
+                    self.main_window.log_message(f"Loaded {len(df)} rows from large CSV file")
+                else:
+                    df = pd.read_csv(input_file)
+                    self.main_window.log_message(f"Loaded {len(df)} rows from CSV file")
 
             # Check required columns
             if 'id' not in df.columns:
