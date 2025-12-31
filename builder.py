@@ -54,8 +54,7 @@ class AIBridgeBuilder:
         if (self.project_root / "version_info.txt").exists():
             version_line = "version='version_info.txt',"
 
-        # Cấu hình cho chế độ Multi-file (OneDir)
-        # EXE chỉ chứa logic chạy, còn lại gom vào COLLECT
+        # Configuration for Multi-file mode (OneDir)
         collect_block = f'''
 coll = COLLECT(
     exe,
@@ -68,8 +67,15 @@ coll = COLLECT(
     name='{self.app_filename}',
 )
 '''
+        # Check if hooks folder exists
+        hooks_path_line = ""
+        hooks_dir = self.project_root / "hooks"
+        if hooks_dir.exists():
+            hooks_path_line = f"hookspath=['{str(hooks_dir).replace(chr(92), chr(92)*2)}'],"
 
         spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
+import sys
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
@@ -77,19 +83,24 @@ a = Analysis(
     ['main.py'],
     pathex=['{str(self.project_root).replace(chr(92), chr(92)*2)}'],
     binaries=[],
-    datas=[
-        ('assets', 'assets'),  # Khai báo assets để PyInstaller biết
-        {('("bot_settings.json", ".") if os.path.exists("bot_settings.json") else ("", "")')}
-    ],
+    datas=[],
     hiddenimports=[
-        'tkinter', 'pandas', 'openpyxl', 'numpy', 'PIL', 'cv2', 
-        'pyautogui', 'pyperclip', 'keyboard', 'cryptography', 
-        'requests', 'docx', 'ebooklib', 'bs4', 'lxml', 'html5lib'
+        'tkinter', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox',
+        'pandas', 'pandas._libs', 'pandas._libs.tslibs.timedeltas',
+        'pandas._libs.tslibs.np_datetime', 'pandas._libs.tslibs.nattype',
+        'pandas._libs.skiplist', 'pandas._libs.hashtable', 'pandas._libs.lib',
+        'openpyxl', 'openpyxl.cell', 'openpyxl.cell._writer',
+        'numpy', 'numpy.core._multiarray_umath', 'numpy.random',
+        'PIL', 'PIL._imaging', 'cv2', 
+        'pyautogui', 'pyperclip', 'keyboard', 
+        'cryptography', 'cryptography.fernet',
+        'requests', 'docx', 'ebooklib', 'bs4', 'lxml', 'html5lib',
+        'pkg_resources.py2_warn'
     ],
-    hookspath=[],
+    {hooks_path_line}
     hooksconfig={{}},
     runtime_hooks=[],
-    excludes=['matplotlib', 'scipy', 'pytest', 'ipython', 'jupyter'],
+    excludes=['matplotlib', 'scipy', 'pytest', 'ipython', 'jupyter', 'IPython', 'notebook'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -101,8 +112,8 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    [],  # Trong chế độ Multi-file, danh sách này để trống
-    exclude_binaries=True, # Tách binary ra ngoài
+    [],
+    exclude_binaries=True,
     name='{self.app_filename}',
     debug=False,
     bootloader_ignore_signals=False,
