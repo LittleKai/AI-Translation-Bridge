@@ -260,13 +260,10 @@ class ConverterTab:
         messagebox.showerror("Error", "Conversion failed. Check log for details.")
 
     def get_settings(self):
-        """
-        Get current settings from tab
-        """
+        """Get current settings from tab (excluding input_path)"""
         settings = {
-            'input_path': self.input_path_var.get(),
             'language': self.language_var.get(),
-            'output_format': self.output_format_var.get()  # Add output format to settings
+            'output_format': self.output_format_var.get()
         }
 
         if self.language_var.get() == "JP":
@@ -275,14 +272,10 @@ class ConverterTab:
         return settings
 
     def load_settings(self, settings):
-        """
-        Load settings into tab
-        """
-        if 'input_path' in settings:
-            self.input_path_var.set(settings['input_path'])
+        """Load settings into tab (excluding input_path)"""
         if 'language' in settings:
             self.language_var.set(settings['language'])
-        if 'output_format' in settings:  # Load output format
+        if 'output_format' in settings:
             self.output_format_var.set(settings['output_format'])
         if 'ruby_handling' in settings and self.language_var.get() == "JP":
             self.ruby_handling_var.set(settings['ruby_handling'])

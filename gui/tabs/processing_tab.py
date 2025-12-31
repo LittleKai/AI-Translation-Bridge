@@ -84,16 +84,53 @@ class ProcessingTab:
             }
         }
 
-    def load_prompt_types(self):
-        """Load prompt types from Excel file"""
+    def load_prompt_types(self, keep_empty_type=None):
+        """Load prompt types from Excel file and filter by available translations for detected language
+        
+        Args:
+            keep_empty_type: Prompt type name to keep in list even if empty (newly added type)
+        """
         try:
             prompt_file = "assets/translate_prompt.xlsx"
             if os.path.exists(prompt_file):
                 df = pd.read_excel(prompt_file)
                 if 'type' in df.columns:
-                    self.prompt_types = df['type'].unique().tolist()
+                    # Get all prompt types
+                    all_types = df['type'].unique().tolist()
+    
+                    # Detect language from input file
+                    translation_settings = self.main_window.translation_tab.get_settings() if hasattr(self.main_window, 'translation_tab') else {}
+                    input_file = translation_settings.get('input_file', '')
+    
+                    if input_file and os.path.exists(input_file):
+                        from helper.prompt_helper import PromptHelper
+                        detected_lang = PromptHelper.detect_language(input_file)
+    
+                        if detected_lang and detected_lang in df.columns:
+                            # Filter prompt types that have non-empty values for this language
+                            self.prompt_types = []
+                            for ptype in all_types:
+                                row = df[df['type'] == ptype]
+                                if not row.empty:
+                                    prompt_value = row.iloc[0].get(detected_lang, '')
+                                    # Include if has content OR if it's the newly added type
+                                    if (pd.notna(prompt_value) and str(prompt_value).strip()) or ptype == keep_empty_type:
+                                        self.prompt_types.append(ptype)
+    
+                            self.main_window.log_message(f"Filtered prompt types for {detected_lang}: {len(self.prompt_types)} available")
+                        else:
+                            self.prompt_types = all_types
+                    else:
+                        self.prompt_types = all_types
+    
                     if self.prompt_types:
-                        self.prompt_type.set(self.prompt_types[0])
+                        # Set first available type or keep current if still valid
+                        current = self.prompt_type.get()
+                        if current not in self.prompt_types:
+                            self.prompt_type.set(self.prompt_types[0])
+                    else:
+                        self.prompt_types = ["Default"]
+                        self.prompt_type.set("Default")
         except Exception as e:
             self.main_window.log_message(f"Warning: Could not load prompt types: {e}")
             self.prompt_types = ["Default"]
@@ -120,6 +157,12 @@ class ProcessingTab:
             self.main_window.translation_tab.update_output_filename() if hasattr(self.main_window, 'translation_tab') else None
         ])
 
+        # Reload prompt types when input file changes (via translation tab)
+        if hasattr(self.main_window, 'translation_tab'):
+            self.main_window.translation_tab.input_file.trace('w', lambda *args: [
+                self.load_prompt_types(),
+                self.prompt_dropdown.configure(values=self.prompt_types) if hasattr(self, 'prompt_dropdown') else None
+            ])
     def create_content(self):
         """Create tab content"""
         content_frame = ttk.Frame(self.parent, padding="15")
@@ -150,10 +193,10 @@ class ProcessingTab:
                   font=("Arial", 9), foreground="gray").grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
 
     def create_prompt_section(self, parent, row):
-        """Create prompt selection section"""
+        """Create prompt selection section with add button"""
         prompt_frame = ttk.LabelFrame(parent, text="Prompt Configuration", padding="10")
         prompt_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
-        prompt_frame.columnconfigure(2, weight=1)
+        prompt_frame.columnconfigure(3, weight=1)
 
         # Edit Prompt button
         ttk.Button(prompt_frame, text="Edit Prompt",
@@ -163,14 +206,123 @@ class ProcessingTab:
         ttk.Label(prompt_frame, text="Prompt Type:").grid(row=0, column=1, sticky=tk.W, padx=(0, 5))
 
         # Prompt Type dropdown
-        prompt_dropdown = ttk.Combobox(
+        self.prompt_dropdown = ttk.Combobox(
             prompt_frame,
             textvariable=self.prompt_type,
             values=self.prompt_types,
             state="readonly",
             width=20
         )
-        prompt_dropdown.grid(row=0, column=2, sticky=tk.W)
+        self.prompt_dropdown.grid(row=0, column=2, sticky=tk.W)
+
+        # Add Prompt Type button with + icon
+        ttk.Button(prompt_frame, text="➕ Add",
+                   command=self.add_new_prompt_type, width=8).grid(row=0, column=3, padx=(5, 0), sticky=tk.W)
+
+
+    def add_new_prompt_type(self):
+        """Add a new prompt type to the Excel file"""
+        try:
+            # Create dialog to input new prompt type name
+            dialog = tk.Toplevel(self.main_window.root)
+            dialog.title("Add New Prompt Type")
+            dialog.resizable(False, False)
+            dialog.transient(self.main_window.root)
+            dialog.grab_set()
+
+            frame = ttk.Frame(dialog, padding="20")
+            frame.pack(fill=tk.BOTH, expand=True)
+
+            ttk.Label(frame, text="Enter new prompt type name:", font=("Arial", 10)).pack(pady=(0, 10))
+
+            name_var = tk.StringVar()
+            name_entry = ttk.Entry(frame, textvariable=name_var, width=30)
+            name_entry.pack(pady=(0, 10))
+            name_entry.focus()
+
+            ttk.Label(frame, text="Description (optional):", font=("Arial", 10)).pack(pady=(0, 5))
+
+            desc_var = tk.StringVar()
+            desc_entry = ttk.Entry(frame, textvariable=desc_var, width=30)
+            desc_entry.pack(pady=(0, 15))
+
+            def save_new_type():
+                new_type_name = name_var.get().strip()
+                description = desc_var.get().strip()
+
+                if not new_type_name:
+                    messagebox.showwarning("Warning", "Please enter a prompt type name")
+                    return
+
+                prompt_file = "assets/translate_prompt.xlsx"
+                if not os.path.exists(prompt_file):
+                    messagebox.showerror("Error", "Prompt file not found")
+                    dialog.destroy()
+                    return
+
+                try:
+                    df = pd.read_excel(prompt_file)
+
+                    # Check if type already exists
+                    if 'type' in df.columns and new_type_name in df['type'].values:
+                        messagebox.showwarning("Warning", f"Prompt type '{new_type_name}' already exists")
+                        return
+
+                    # Create new row with empty values for all language columns
+                    new_row = {'type': new_type_name, 'description': description}
+
+                    # Add empty values for all language columns
+                    for col in df.columns:
+                        if col not in ['type', 'description']:
+                            new_row[col] = ''
+
+                    # Append new row
+                    new_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    new_df.to_excel(prompt_file, index=False)
+
+                    self.main_window.log_message(f"Added new prompt type: {new_type_name}")
+
+                    # Reload prompt types with the new type kept even if empty
+                    self.load_prompt_types(keep_empty_type=new_type_name)
+
+                    # Update dropdown with new values
+                    if hasattr(self, 'prompt_dropdown'):
+                        self.prompt_dropdown['values'] = self.prompt_types
+                        self.prompt_dropdown.update()
+
+                    # Set the new type as selected
+                    self.prompt_type.set(new_type_name)
+
+                    # Save settings to persist the change
+                    self.main_window.save_settings()
+
+                    messagebox.showinfo("Success", f"Prompt type '{new_type_name}' added successfully!\n\nYou can now edit the prompts for each language.")
+                    dialog.destroy()
+
+                    # Open prompt dialog automatically to edit
+                    self.open_prompt_dialog()
+
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to add prompt type: {str(e)}")
+                    self.main_window.log_message(f"Error adding prompt type: {str(e)}")
+
+            btn_frame = ttk.Frame(frame)
+            btn_frame.pack()
+
+            ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=(0, 5))
+            ttk.Button(btn_frame, text="Add", command=save_new_type).pack(side=tk.LEFT)
+
+            # Bind Enter key to save
+            dialog.bind('<Return>', lambda e: save_new_type())
+
+            # Center dialog
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+            y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+            dialog.geometry(f"+{x}+{y}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open add dialog: {str(e)}")
 
     def create_ai_service_section(self, parent, row):
         """Create AI service selection section with manual/automatic mode"""
@@ -407,9 +559,24 @@ class ProcessingTab:
                 messagebox.showwarning("Warning", "Failed to load translation prompt")
                 return
 
-            # Read input CSV
+            # Read input file with proper encoding handling
             try:
-                df = pd.read_csv(input_file)
+                # Check file extension
+                _, ext = os.path.splitext(input_file)
+                ext = ext.lower()
+
+                if ext in ['.xlsx', '.xls']:
+                    # Read Excel file with openpyxl engine
+                    df = pd.read_excel(input_file, engine='openpyxl')
+                    self.main_window.log_message(f"Loaded {len(df)} rows from Excel file")
+                else:
+                    # Read CSV with UTF-8 encoding
+                    df = pd.read_csv(input_file, encoding='utf-8')
+                    self.main_window.log_message(f"Loaded {len(df)} rows from CSV file")
+
+            except UnicodeDecodeError as e:
+                messagebox.showerror("Error", f"Encoding error reading file: {str(e)}\nPlease ensure file is saved with UTF-8 encoding")
+                return
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to read input file: {str(e)}")
                 return
@@ -457,9 +624,9 @@ class ProcessingTab:
             # Copy to clipboard
             pyperclip.copy(full_prompt)
 
-            # Store batch data for later processing - IMPORTANT
+            # Store batch data for later processing
             self.current_prompt_text = full_prompt
-            self.manual_batch_data = next_batch_df.copy()  # Make a copy to ensure data persists
+            self.manual_batch_data = next_batch_df.copy()
             self.manual_batch_ids = next_batch_df['id'].tolist()
 
             # Verify data was stored

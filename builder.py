@@ -6,22 +6,22 @@ from pathlib import Path
 import json
 from datetime import datetime
 
-
 class AIBridgeBuilder:
-    """Build AIBridge application to executable"""
+    """Build AIBridge application to executable (Multi-file Support)"""
 
     def __init__(self):
         self.project_root = Path(__file__).parent
         self.build_dir = self.project_root / "build"
         self.dist_dir = self.project_root / "dist"
+
         self.app_name = "AI Translation Bridge"
         self.app_filename = "AI_Translation_Bridge"
         self.version = "1.0.0"
 
-        # PyInstaller options
+        # CẤU HÌNH BUILD
         self.build_options = {
-            'console': False,
-            'onefile': True,
+            'console': False,     # Tắt màn hình đen console
+            'onefile': False,     # False = Multi-file (Nhanh & Ổn định)
             'icon': None,
             'upx': True,
             'clean': True
@@ -30,8 +30,6 @@ class AIBridgeBuilder:
     def check_requirements(self):
         """Check if all required tools are installed"""
         print("Checking requirements...")
-
-        # Check PyInstaller
         try:
             import PyInstaller
             print(f"✓ PyInstaller version: {PyInstaller.__version__}")
@@ -39,28 +37,37 @@ class AIBridgeBuilder:
             print("✗ PyInstaller not found. Installing...")
             subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"])
 
-        # Check if icon exists
         icon_path = self.project_root / "assets" / "icon.ico"
         if icon_path.exists():
-            self.build_options['icon'] = str(icon_path).replace('\\', '\\\\')  # Escape backslashes
+            self.build_options['icon'] = str(icon_path).replace('\\', '\\\\')
             print(f"✓ Icon found: {icon_path}")
         else:
             print("! Icon not found, will use default")
-
         return True
 
     def create_spec_file(self):
-        """Create PyInstaller spec file with custom configuration"""
+        """Create PyInstaller spec file for Multi-file mode"""
 
-        # Prepare icon line for spec file
-        icon_line = ""
-        if self.build_options['icon']:
-            icon_line = f"icon='{self.build_options['icon']}',"
+        icon_line = f"icon='{self.build_options['icon']}'," if self.build_options['icon'] else ""
 
-        # Prepare version line
         version_line = ""
         if (self.project_root / "version_info.txt").exists():
             version_line = "version='version_info.txt',"
+
+        # Cấu hình cho chế độ Multi-file (OneDir)
+        # EXE chỉ chứa logic chạy, còn lại gom vào COLLECT
+        collect_block = f'''
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx={self.build_options['upx']},
+    upx_exclude=[],
+    name='{self.app_filename}',
+)
+'''
 
         spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
 
@@ -71,37 +78,18 @@ a = Analysis(
     pathex=['{str(self.project_root).replace(chr(92), chr(92)*2)}'],
     binaries=[],
     datas=[
-        ('assets', 'assets'),
-        {'("bot_settings.json", ".") if os.path.exists("bot_settings.json") else ("", ""),'}
+        ('assets', 'assets'),  # Khai báo assets để PyInstaller biết
+        {('("bot_settings.json", ".") if os.path.exists("bot_settings.json") else ("", "")')}
     ],
     hiddenimports=[
-        'tkinter',
-        'pandas',
-        'openpyxl',
-        'numpy',
-        'PIL',
-        'cv2',
-        'pyautogui',
-        'pyperclip',
-        'keyboard',
-        'cryptography',
-        'requests',
-        'docx',
-        'ebooklib',
-        'bs4',
-        'lxml',
-        'html5lib'
+        'tkinter', 'pandas', 'openpyxl', 'numpy', 'PIL', 'cv2', 
+        'pyautogui', 'pyperclip', 'keyboard', 'cryptography', 
+        'requests', 'docx', 'ebooklib', 'bs4', 'lxml', 'html5lib'
     ],
     hookspath=[],
     hooksconfig={{}},
     runtime_hooks=[],
-    excludes=[
-        'matplotlib',
-        'scipy',
-        'pytest',
-        'ipython',
-        'jupyter'
-    ],
+    excludes=['matplotlib', 'scipy', 'pytest', 'ipython', 'jupyter'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -113,17 +101,13 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name='{self.app_name}',
+    [],  # Trong chế độ Multi-file, danh sách này để trống
+    exclude_binaries=True, # Tách binary ra ngoài
+    name='{self.app_filename}',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx={self.build_options['upx']},
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console={self.build_options['console']},
     disable_windowed_traceback=False,
     target_arch=None,
@@ -132,13 +116,12 @@ exe = EXE(
     {icon_line}
     {version_line}
 )
-'''
 
+{collect_block}
+'''
         spec_file = self.project_root / f"{self.app_filename}.spec"
         with open(spec_file, 'w', encoding='utf-8') as f:
             f.write(spec_content)
-
-        print(f"✓ Spec file created: {spec_file}")
         return spec_file
 
     def create_version_info(self):
@@ -163,7 +146,6 @@ exe = EXE(
         StringStruct(u'FileDescription', u'AI Translation Bridge Application'),
         StringStruct(u'FileVersion', u'{self.version}'),
         StringStruct(u'InternalName', u'{self.app_filename}'),
-        StringStruct(u'LegalCopyright', u'Copyright (c) 2024'),
         StringStruct(u'OriginalFilename', u'{self.app_name}.exe'),
         StringStruct(u'ProductName', u'AI Translation Bridge'),
         StringStruct(u'ProductVersion', u'{self.version}')])
@@ -171,175 +153,87 @@ exe = EXE(
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
   ]
 )'''
-
         version_file = self.project_root / "version_info.txt"
         with open(version_file, 'w', encoding='utf-8') as f:
             f.write(version_info)
-
-        print(f"✓ Version info created: {version_file}")
         return version_file
 
     def clean_temp_files(self):
-        """Clean temporary build files after build"""
-        print("\nCleaning temporary files...")
-
-        # Remove build directory
+        """Clean temporary build files"""
         if self.build_dir.exists():
             shutil.rmtree(self.build_dir)
-            print(f"  ✓ Removed: {self.build_dir}")
 
-        # Remove ALL spec files (cả tên cũ và mới)
-        spec_files = [
-            self.project_root / f"{self.app_filename}.spec",
-            self.project_root / "AIBridge.spec",  # Tên cũ
-            self.project_root / "AI_Bridge.spec"  # Có thể có
-        ]
-
-        for spec_file in spec_files:
-            if spec_file.exists():
-                spec_file.unlink()
-                print(f"  ✓ Removed: {spec_file}")
-
-        # Remove version_info.txt
+        spec_file = self.project_root / f"{self.app_filename}.spec"
         version_file = self.project_root / "version_info.txt"
-        if version_file.exists():
-            version_file.unlink()
-            print(f"  ✓ Removed: {version_file}")
 
-        # Remove __pycache__ directories
-        for pycache in self.project_root.rglob("__pycache__"):
-            shutil.rmtree(pycache)
-            print(f"  ✓ Removed: {pycache}")
+        if spec_file.exists(): spec_file.unlink()
+        if version_file.exists(): version_file.unlink()
 
-    def clean_all_build_files(self):
-        """Clean all build files including dist"""
-        print("Cleaning all build files...")
-
-        # Clean temp files
-        self.clean_temp_files()
-
-        # Remove dist directory
-        if self.dist_dir.exists():
-            shutil.rmtree(self.dist_dir)
-            print(f"  ✓ Removed: {self.dist_dir}")
-
-    def build(self, console=False, onefile=True):
+    def build(self):
         """Build the executable"""
-        self.build_options['console'] = console
-        self.build_options['onefile'] = onefile
-
         print("\n" + "="*50)
         print(f"Building {self.app_name} v{self.version}")
-        print(f"Mode: {'Console' if console else 'Windowed'}")
-        print(f"Type: {'Single File' if onefile else 'Directory'}")
+        print("Type: Multi-file (Folder) - Optimized for Speed")
         print("="*50 + "\n")
 
-        # Clean all previous build files first
-        self.clean_all_build_files()
+        # 1. Dọn dẹp
+        self.clean_temp_files()
+        if self.dist_dir.exists(): shutil.rmtree(self.dist_dir)
 
-        # Check requirements
-        if not self.check_requirements():
-            print("Requirements check failed!")
-            return False
-
-        # Create version info
-        version_file = self.create_version_info()
-
-        # Create spec file
+        # 2. Chuẩn bị
+        if not self.check_requirements(): return False
+        self.create_version_info()
         spec_file = self.create_spec_file()
 
-        # Run PyInstaller
+        # 3. Chạy PyInstaller
         print("\nRunning PyInstaller...")
-        cmd = [
-            sys.executable, "-m", "PyInstaller",
-            "--clean",
-            "--noconfirm",
-            str(spec_file)
-        ]
+        cmd = [sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", str(spec_file)]
+        result = subprocess.run(cmd, capture_output=True, text=True)
 
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            print("✓ Build completed successfully!")
 
-            if result.returncode == 0:
-                print("✓ Build completed successfully!")
+            # 4. Xử lý Output
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            final_release_dir = self.project_root / "releases" / f"{self.app_filename}_{self.version}_{timestamp}"
+            final_release_dir.mkdir(parents=True, exist_ok=True)
 
-                # Show output location
-                exe_path = self.dist_dir / f"{self.app_name}.exe"
+            # Folder gốc do PyInstaller tạo ra
+            build_output_dir = self.dist_dir / self.app_filename
 
-                if exe_path.exists():
-                    size_mb = exe_path.stat().st_size / (1024 * 1024)
-                    print(f"\nExecutable created:")
-                    print(f"  Path: {exe_path}")
-                    print(f"  Size: {size_mb:.2f} MB")
+            if build_output_dir.exists():
+                # Copy toàn bộ nội dung sang folder release
+                shutil.copytree(build_output_dir, final_release_dir, dirs_exist_ok=True)
 
-                    # Create output folder with timestamp
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    output_dir = self.project_root / "releases" / f"{self.app_filename}_{self.version}_{timestamp}"
-                    output_dir.mkdir(parents=True, exist_ok=True)
+                # Đổi tên file exe cho đẹp
+                src_exe = final_release_dir / f"{self.app_filename}.exe"
+                dst_exe = final_release_dir / f"{self.app_name}.exe"
+                if src_exe.exists() and src_exe != dst_exe:
+                    src_exe.rename(dst_exe)
 
-                    # Copy executable to releases folder
-                    final_exe = output_dir / f"{self.app_name}.exe"
-                    shutil.copy2(exe_path, final_exe)
+                # --- QUAN TRỌNG: COPY ASSETS ---
+                # Đảm bảo folder assets nằm cạnh file exe và là bản mới nhất
+                assets_src = self.project_root / "assets"
+                assets_dst = final_release_dir / "assets"
 
-                    # Copy assets folder to output
-                    assets_src = self.project_root / "assets"
-                    assets_dst = output_dir / "assets"
-                    if assets_src.exists():
-                        shutil.copytree(assets_src, assets_dst, dirs_exist_ok=True)
-                        print(f"  ✓ Assets copied to: {assets_dst}")
+                if assets_src.exists():
+                    print(f"Syncing assets folder...")
+                    # dirs_exist_ok=True sẽ ghi đè file cũ nếu cần
+                    shutil.copytree(assets_src, assets_dst, dirs_exist_ok=True)
+                    print(f" ✓ Assets verified at: {assets_dst}")
 
-                    print(f"\n✓ Release package created: {output_dir}")
-                    print(f"  Final executable: {final_exe}")
+                print(f"\n✓ Release Created: {final_release_dir}")
+                print(f"  Main file: {dst_exe}")
+                print(f"  Assets dir: {assets_dst}")
 
-                    # Clean temporary files after successful build
-                    self.clean_temp_files()
-
-                    # Also remove dist folder after copying
-                    if self.dist_dir.exists():
-                        shutil.rmtree(self.dist_dir)
-                        print(f"  ✓ Cleaned dist folder")
-
-                    print("\n✓ All temporary build files cleaned")
-
-                    return True
-                else:
-                    print("✗ Executable not found after build!")
-                    self.clean_temp_files()
-                    return False
-
-            else:
-                print("✗ Build failed!")
-                print("Error output:")
-                print(result.stderr)
-                self.clean_temp_files()
-                return False
-
-        except Exception as e:
-            print(f"✗ Build error: {e}")
             self.clean_temp_files()
+            if self.dist_dir.exists(): shutil.rmtree(self.dist_dir)
+            return True
+        else:
+            print("✗ Build failed!")
+            print(result.stderr)
             return False
 
-
-def main():
-    """Main function for builder - auto build windowed app"""
-    builder = AIBridgeBuilder()
-
-    print("AI Translation Bridge - Builder")
-    print("================================\n")
-
-    # Auto build windowed application without asking
-    print("Starting automatic build (Windowed application)...")
-
-    success = builder.build(console=False, onefile=True)
-
-    if success:
-        print("\n" + "="*50)
-        print("BUILD SUCCESSFUL!")
-        print("="*50)
-    else:
-        print("\n" + "="*50)
-        print("BUILD FAILED!")
-        print("="*50)
-
 if __name__ == "__main__":
-    main()
+    builder = AIBridgeBuilder()
+    builder.build()
