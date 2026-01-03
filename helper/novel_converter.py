@@ -541,17 +541,14 @@ def process_ruby_tags(content, ruby_handling):
 
                 return f'{combined_rb}({combined_rt})' if combined_rt else combined_rb
             else:
-                base_match = re.search(r'<rb>(.*?)</rb>', ruby_content, re.DOTALL)
-                rt_match = re.search(r'<rt>(.*?)</rt>', ruby_content, re.DOTALL)
-
-                if base_match:
-                    base_text = base_match.group(1).strip()
-                    if rt_match:
-                        rt_text = rt_match.group(1).strip()
-                        return f"{base_text}({rt_text})" if rt_text else base_text
-                    return base_text
-
-                return ruby_content
+                simple_match = re.search(r'(.*?)<rt>(.*?)</rt>', ruby_content, re.DOTALL)
+                if simple_match:
+                    main_text = re.sub(r'</?r[bt]>', '', simple_match.group(1)).strip()
+                    rt_text = simple_match.group(2).strip()
+                    return f'{main_text}({rt_text})' if rt_text else main_text
+                else:
+                    clean_content = re.sub(r'</?r[bt]>', '', ruby_content).strip()
+                    return clean_content
 
         content = re.sub(r'<ruby>(.*?)</ruby>', replace_complex_ruby_keep, content, flags=re.DOTALL)
 
