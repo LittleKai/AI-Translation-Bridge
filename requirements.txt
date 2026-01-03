@@ -1,26 +1,133 @@
-# YOLO Dependencies for UI Element Detection
+# ============================================
+# AIBridge Requirements for Python 3.10.x
+# Tested and optimized versions
+# Last updated: 2025-01-01
+# ============================================
 
-# Core YOLO
-ultralytics>=8.0.0
+# ==========================================
+# CORE GUI & DATA PROCESSING
+# ==========================================
+# Tkinter is built-in with Python, no need to install
 
-# Data augmentation
-albumentations>=1.3.0
+# Data manipulation
+pandas==2.0.3
+numpy==1.24.3
+openpyxl==3.1.2
 
-# Image processing
-opencv-python>=4.8.0
-Pillow>=10.0.0
+# ==========================================
+# COMPUTER VISION & IMAGE PROCESSING
+# ==========================================
+# OpenCV for image processing
+opencv-python==4.8.1.78
 
-# Deep learning (CPU version - change to torch for GPU)
-torch>=2.0.0
-torchvision>=0.15.0
+# PIL/Pillow for image handling
+Pillow==10.1.0
 
-# Utilities
-numpy>=1.24.0
-pyyaml>=6.0
-matplotlib>=3.7.0
+# ==========================================
+# DEEP LEARNING & YOLO
+# ==========================================
+# PyTorch (CPU version - change URL for GPU)
+# For GPU: Use --index-url https://download.pytorch.org/whl/cu118
+torch==2.1.2
+torchvision==0.16.2
 
-# Buiilder
-nuitka
-ordered-set
-zstandard
+# YOLO object detection
+ultralytics==8.0.232
 
+# Data augmentation (required by YOLO)
+albumentations==1.3.1
+
+# YAML parsing (required by YOLO)
+PyYAML==6.0.1
+
+# ==========================================
+# AUTOMATION & SYSTEM CONTROL
+# ==========================================
+# Screen capture and mouse control
+pyautogui==0.9.54
+
+# Clipboard operations
+pyperclip==1.8.2
+
+# Keyboard hooks and shortcuts
+keyboard==0.13.5
+
+# ==========================================
+# API & WEB REQUESTS
+# ==========================================
+# HTTP requests for API calls
+requests==2.31.0
+
+# URL parsing
+urllib3==2.0.7
+
+# ==========================================
+# DOCUMENT PROCESSING
+# ==========================================
+# Word documents (.docx)
+python-docx==1.1.0
+
+# EPUB files
+ebooklib==0.18
+
+# HTML/XML parsing
+beautifulsoup4==4.12.2
+lxml==4.9.3
+html5lib==1.1
+
+# ==========================================
+# SECURITY & ENCRYPTION
+# ==========================================
+# API key encryption
+cryptography==41.0.7
+
+# ==========================================
+# BUILD & PACKAGING
+# ==========================================
+# PyInstaller for creating executables
+pyinstaller==6.3.0
+
+# Alternative installer (optional)
+# auto-py-to-exe==2.42.0
+
+# ==========================================
+# UTILITIES & HELPERS
+# ==========================================
+# Date and time utilities
+python-dateutil==2.8.2
+
+
+# Timezone handling
+pytz==2023.3
+
+# Path manipulation (built-in, but explicit version)
+pathlib2==2.3.7; python_version < "3.4"
+
+# ==========================================
+# DEVELOPMENT TOOLS (Optional)
+# ==========================================
+# Code formatter
+# black==23.12.1
+
+# Linter
+# pylint==3.0.3
+
+# Type checker
+# mypy==1.7.1
+
+# ==========================================
+# ADDITIONAL DEPENDENCIES
+# ==========================================
+# Character encoding detection
+chardet==5.2.0
+
+# File type identification
+python-magic-bin==0.4.14; sys_platform == 'win32'
+
+# Progress bars (for CLI operations)
+tqdm==4.66.1
+
+
+jaraco.text jaraco.text jaraco.functools jaraco.context jaraco.classes
+importlib-metadata
+platformdirs

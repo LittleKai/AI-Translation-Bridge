@@ -378,6 +378,7 @@ def read_epub_content(file_path, ruby_handling=None):
     except Exception:
         return []
 
+
 def is_hiragana(text):
     """
     Check if text is hiragana
@@ -414,9 +415,45 @@ def is_css_content(text):
         if keyword in text.lower() and ':' in text:
             return True
 
-    # Check for URLs that appear in DTD declarations
     if 'http://www.w3.org/' in text and 'DTD' in text:
         return True
+
+    return False
+
+def is_html_tag_or_attribute(text):
+    """
+    Check if text is HTML tag, attribute, or XML declaration
+    Should be filtered out from content
+    """
+    text = text.strip()
+
+    if not text:
+        return True
+
+    html_patterns = [
+        r'^xmlns\s*=',
+        r'^\s*xmlns:',
+        r'^class\s*=',
+        r'^id\s*=',
+        r'^style\s*=',
+        r'^version\s*=',
+        r'^width\s*=|^height\s*=',
+        r'^viewBox\s*=',
+        r'http://www\.w3\.org/',
+        r'^\s*"[^"]*"\s*$',
+    ]
+
+    for pattern in html_patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+
+    standalone_tags = ['xmlns', 'class', 'style', 'script', 'head', 'body', 'meta', 'link']
+    if text.lower() in standalone_tags:
+        return True
+
+    if '=' in text and ('"' in text or "'" in text):
+        if not re.search(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF]', text):
+            return True
 
     return False
 
@@ -441,78 +478,68 @@ def process_ruby_tags(content, ruby_handling):
     Process ruby tags based on handling mode with complex ruby support
     """
     if ruby_handling == 'remove_all':
+        content = re.sub(r'<ruby>(.*?)<rt>.*?</rt></ruby>', r'\1', content, flags=re.DOTALL)
         content = re.sub(r'<ruby>(.*?)</ruby>', r'\1', content, flags=re.DOTALL)
-        content = re.sub(r'<r[ubt]>', '', content)
 
     elif ruby_handling == 'remove_hiragana':
         def replace_complex_ruby(match):
             ruby_content = match.group(1)
+
             rb_rt_pairs = re.findall(r'<rb>(.*?)</rb>\s*<rt>(.*?)</rt>', ruby_content, re.DOTALL)
 
             if rb_rt_pairs:
-                result_parts = []
+                combined_rb = ""
+                combined_rt = ""
+
                 for rb_text, rt_text in rb_rt_pairs:
-                    rb_text = rb_text.strip()
-                    rt_text = rt_text.strip()
+                    combined_rb += rb_text.strip()
+                    combined_rt += rt_text.strip()
+
+                if combined_rt and is_hiragana(combined_rt):
+                    return combined_rb
+                else:
+                    return f'{combined_rb}({combined_rt})' if combined_rt else combined_rb
+            else:
+                simple_match = re.search(r'(.*?)<rt>(.*?)</rt>', ruby_content, re.DOTALL)
+                if simple_match:
+                    main_text = simple_match.group(1).strip()
+                    rt_text = simple_match.group(2).strip()
 
                     if rt_text and is_hiragana(rt_text):
-                        result_parts.append(rb_text)
-                    elif rt_text:
-                        result_parts.append(f"{rb_text}({rt_text})")
+                        return main_text
                     else:
-                        result_parts.append(rb_text)
-
-                return ''.join(result_parts)
-            else:
-                base_match = re.search(r'<rb>(.*?)</rb>', ruby_content, re.DOTALL)
-                rt_match = re.search(r'<rt>(.*?)</rt>', ruby_content, re.DOTALL)
-
-                if base_match:
-                    base_text = base_match.group(1).strip()
-                    if rt_match:
-                        rt_text = rt_match.group(1).strip()
-                        if rt_text and is_hiragana(rt_text):
-                            return base_text
-                        else:
-                            return f"{base_text}({rt_text})" if rt_text else base_text
-                    return base_text
-
-                return ruby_content
+                        return f'{main_text}({rt_text})' if rt_text else main_text
+                else:
+                    return ruby_content
 
         content = re.sub(r'<ruby>(.*?)</ruby>', replace_complex_ruby, content, flags=re.DOTALL)
 
         def replace_simple_ruby(match):
-            full_content = match.group(0)
-            base_text = match.group(1).strip()
+            main_text = match.group(1).strip()
             rt_text = match.group(2).strip()
 
-            if not rt_text:
-                return base_text
-
-            if is_hiragana(rt_text):
-                return base_text
+            if rt_text and is_hiragana(rt_text):
+                return main_text
             else:
-                return f"{base_text}({rt_text})"
+                return f'{main_text}({rt_text})' if rt_text else main_text
 
-        content = re.sub(r'<ruby>([^<]+)<rt>([^<]*)</rt></ruby>', replace_simple_ruby, content)
-        content = re.sub(r'<r[ubt]>', '', content)
+        content = re.sub(r'<ruby>(.*?)<rt>(.*?)</rt></ruby>', replace_simple_ruby, content, flags=re.DOTALL)
 
     elif ruby_handling == 'keep_all':
-        def replace_ruby_keep_all(match):
+        def replace_complex_ruby_keep(match):
             ruby_content = match.group(1)
 
             rb_rt_pairs = re.findall(r'<rb>(.*?)</rb>\s*<rt>(.*?)</rt>', ruby_content, re.DOTALL)
 
             if rb_rt_pairs:
-                result_parts = []
+                combined_rb = ""
+                combined_rt = ""
+
                 for rb_text, rt_text in rb_rt_pairs:
-                    rb_text = rb_text.strip()
-                    rt_text = rt_text.strip()
-                    if rt_text:
-                        result_parts.append(f"{rb_text}({rt_text})")
-                    else:
-                        result_parts.append(rb_text)
-                return ''.join(result_parts)
+                    combined_rb += rb_text.strip()
+                    combined_rt += rt_text.strip()
+
+                return f'{combined_rb}({combined_rt})' if combined_rt else combined_rb
             else:
                 base_match = re.search(r'<rb>(.*?)</rb>', ruby_content, re.DOTALL)
                 rt_match = re.search(r'<rt>(.*?)</rt>', ruby_content, re.DOTALL)
@@ -526,7 +553,7 @@ def process_ruby_tags(content, ruby_handling):
 
                 return ruby_content
 
-        content = re.sub(r'<ruby>(.*?)</ruby>', replace_ruby_keep_all, content, flags=re.DOTALL)
+        content = re.sub(r'<ruby>(.*?)</ruby>', replace_complex_ruby_keep, content, flags=re.DOTALL)
 
         def replace_simple_ruby_keep(match):
             base_text = match.group(1).strip()
@@ -534,9 +561,30 @@ def process_ruby_tags(content, ruby_handling):
             return f"{base_text}({rt_text})" if rt_text else base_text
 
         content = re.sub(r'<ruby>([^<]+)<rt>([^<]*)</rt></ruby>', replace_simple_ruby_keep, content)
-        content = re.sub(r'<r[ubt]>', '', content)
 
     return content
+
+def merge_consecutive_ruby_readings(text):
+    """
+    Merge consecutive ruby readings into single parentheses
+    Example: 情報収集妨害(ジャミング)煙幕(スモーク) → 情報収集妨害煙幕(ジャミングスモーク)
+    """
+    def merge_group(match):
+        full_text = match.group(0)
+
+        pairs = re.findall(r'([^\(]+)\(([^\)]+)\)', full_text)
+
+        if len(pairs) >= 2:
+            combined_text = ''.join([pair[0] for pair in pairs])
+            combined_reading = ''.join([pair[1] for pair in pairs])
+            return f'{combined_text}({combined_reading})'
+        else:
+            return full_text
+
+    pattern = r'(?:[^\(]+\([^\)]+\)){2,}'
+    text = re.sub(pattern, merge_group, text)
+
+    return text
 
 def extract_content_from_html(content, ruby_handling=None):
     """
@@ -548,13 +596,13 @@ def extract_content_from_html(content, ruby_handling=None):
         except UnicodeDecodeError:
             content = content.decode('utf-8', errors='replace')
 
-    # Remove DOCTYPE and XML declarations
     content = re.sub(r'<!DOCTYPE[^>]*>', '', content, flags=re.IGNORECASE)
     content = re.sub(r'<\?xml[^>]*\?>', '', content, flags=re.IGNORECASE)
     content = re.sub(r'<!doctype[^>]*>', '', content, flags=re.IGNORECASE)
 
-    # Remove HTML comments
     content = re.sub(r'<!--.*?-->', '', content, flags=re.DOTALL)
+
+    content = re.sub(r'<title[^>]*>.*?</title>', '', content, flags=re.DOTALL | re.IGNORECASE)
 
     if ruby_handling:
         content = process_ruby_tags(content, ruby_handling)
@@ -564,18 +612,33 @@ def extract_content_from_html(content, ruby_handling=None):
     content = re.sub(r'<style[^>]*>.*?</style>', '', content, flags=re.DOTALL | re.IGNORECASE)
     content = re.sub(r'<script[^>]*>.*?</script>', '', content, flags=re.DOTALL | re.IGNORECASE)
 
+    content = re.sub(r'<svg[^>]*>.*?</svg>', '', content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r'<svg[^>]*>', '', content, flags=re.IGNORECASE)
+
     content = re.sub(r'<img[^>]*>', '(img)', content, flags=re.IGNORECASE)
 
     content = re.sub(r'<br\s*/?>', '\n', content, flags=re.IGNORECASE)
-    content = re.sub(r'</p>\s*<p[^>]*>', '\n', content, flags=re.IGNORECASE)
-    content = re.sub(r'</div>\s*<div[^>]*>', '\n', content, flags=re.IGNORECASE)
+    content = re.sub(r'</p>', '\n', content, flags=re.IGNORECASE)
+    content = re.sub(r'</div>', '\n', content, flags=re.IGNORECASE)
+    content = re.sub(r'</h[1-6]>', '\n', content, flags=re.IGNORECASE)
+    content = re.sub(r'</li>', '\n', content, flags=re.IGNORECASE)
+    content = re.sub(r'</td>', '\n', content, flags=re.IGNORECASE)
+    content = re.sub(r'</th>', '\n', content, flags=re.IGNORECASE)
+    content = re.sub(r'</blockquote>', '\n', content, flags=re.IGNORECASE)
+    content = re.sub(r'</section>', '\n', content, flags=re.IGNORECASE)
+    content = re.sub(r'</article>', '\n', content, flags=re.IGNORECASE)
+
+    content = re.sub(r'<[^>]+>', '', content)
+
+    content = decode_html_entities(content)
 
     lines = content.split('\n')
     for line in lines:
-        cleaned = re.sub(r'<[^>]+>', '', line)
-        cleaned = decode_html_entities(cleaned)
-        cleaned = cleaned.strip()
-        if cleaned and not is_css_content(cleaned):
+        cleaned = line.strip()
+
+        if cleaned and not is_css_content(cleaned) and not is_html_tag_or_attribute(cleaned):
+            if ruby_handling:
+                cleaned = merge_consecutive_ruby_readings(cleaned)
             result.append(cleaned)
 
     return result
