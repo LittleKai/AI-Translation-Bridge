@@ -83,7 +83,7 @@ class TranslationTab:
         input_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         input_frame.columnconfigure(1, weight=1)
 
-        ttk.Button(input_frame, text="Select Input CSV",
+        ttk.Button(input_frame, text="Select Input",
                    command=self.select_input_file).grid(row=0, column=0, padx=(0, 10))
 
         # Display only filename in label, but store full path

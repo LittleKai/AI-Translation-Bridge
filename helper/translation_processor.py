@@ -173,44 +173,9 @@ class TranslationProcessor:
             self.main_window.log_message("Error: Failed to load translation prompt")
             return
 
-        # Check file size
-        file_size = os.path.getsize(input_file)
-        is_large_file = file_size > 10 * 1024 * 1024  # > 10MB
-
-        if is_large_file:
-            self.main_window.log_message(f"Processing large file ({file_size / 1024 / 1024:.1f} MB)...")
-
-        # Read input file (CSV or Excel) with optimization for large files
-        try:
-            # Check file extension
-            _, ext = os.path.splitext(input_file)
-            ext = ext.lower()
-
-            if ext in ['.xlsx', '.xls']:
-                df = pd.read_excel(input_file, engine='openpyxl')
-                self.main_window.log_message(f"Loaded {len(df)} rows from Excel file")
-            else:
-                # For large CSV files, use optimized reading
-                if is_large_file:
-                    # Read with specific dtypes to reduce memory usage
-                    dtype_dict = {'id': 'int32', 'text': 'str'}
-                    df = pd.read_csv(input_file, dtype=dtype_dict, low_memory=False)
-                    self.main_window.log_message(f"Loaded {len(df)} rows from large CSV file")
-                else:
-                    df = pd.read_csv(input_file)
-                    self.main_window.log_message(f"Loaded {len(df)} rows from CSV file")
-
-            # Check required columns
-            if 'id' not in df.columns:
-                self.main_window.log_message("Error: File must have 'id' column")
-                return
-            if 'text' not in df.columns:
-                self.main_window.log_message("Error: File must have 'text' column")
-                self.main_window.log_message(f"Available columns: {', '.join(df.columns)}")
-                return
-
-        except Exception as e:
-            self.main_window.log_message(f"Error reading input file: {e}")
+        # Read input file using PromptHelper
+        df = PromptHelper.read_input_file(input_file, self.main_window.log_message)
+        if df is None:
             return
 
         # Apply ID range filters
@@ -446,6 +411,8 @@ class TranslationProcessor:
 
             # Fill in all lines in order
             for i in range(1, expected_count + 1):
+                if i == (expected_count+1):
+                    print(f'Last line: {numbered_lines[i]}')
                 if i in numbered_lines:
                     lines.append(numbered_lines[i])
                 else:
@@ -460,7 +427,7 @@ class TranslationProcessor:
                 # Special handling for the last line in fallback mode
                 if i == expected_count - 1:  # Last line (0-indexed)
                     cleaned = TranslationProcessor.clean_last_line_content(cleaned)
-
+                    print(f'Last line (cleaned): {cleaned}')
                 lines.append(cleaned)
 
             # Pad with empty strings if needed

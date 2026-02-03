@@ -196,7 +196,6 @@ class PromptHelper:
                         return False
             else:
                 # Save as CSV
-                print(f"[DEBUG] Saving as CSV...")
                 results_df_sorted.to_csv(output_path, index=False)
                 print(f"[SUCCESS] CSV file saved: {output_path}")
                 return True
@@ -283,3 +282,61 @@ class PromptHelper:
 
         # Return a copy to ensure data persists
         return batch_df.copy() if not batch_df.empty else None
+
+    @staticmethod
+    def read_input_file(input_file, log_func=None):
+        """Read input file (CSV or Excel) with proper encoding handling
+
+        Args:
+            input_file: Path to input file
+            log_func: Optional logging function
+
+        Returns:
+            DataFrame if successful, None if failed
+        """
+        try:
+            # Check file extension
+            _, ext = os.path.splitext(input_file)
+            ext = ext.lower()
+
+            # Check file size for optimization
+            file_size = os.path.getsize(input_file)
+            is_large_file = file_size > 10 * 1024 * 1024  # > 10MB
+
+            if is_large_file and log_func:
+                log_func(f"Processing large file ({file_size / 1024 / 1024:.1f} MB)...")
+
+            if ext in ['.xlsx', '.xls']:
+                df = pd.read_excel(input_file, engine='openpyxl')
+                if log_func:
+                    log_func(f"Loaded {len(df)} rows from Excel file")
+            else:
+                # For large CSV files, use optimized reading
+                if is_large_file:
+                    dtype_dict = {'id': 'int32', 'text': 'str'}
+                    df = pd.read_csv(input_file, dtype=dtype_dict, low_memory=False, encoding='utf-8')
+                    if log_func:
+                        log_func(f"Loaded {len(df)} rows from large CSV file")
+                else:
+                    df = pd.read_csv(input_file, encoding='utf-8')
+                    if log_func:
+                        log_func(f"Loaded {len(df)} rows from CSV file")
+
+            # Validate required columns
+            if 'id' not in df.columns:
+                if log_func:
+                    log_func("Error: File must have 'id' column")
+                return None
+
+            if 'text' not in df.columns:
+                if log_func:
+                    log_func("Error: File must have 'text' column")
+                    log_func(f"Available columns: {', '.join(df.columns)}")
+                return None
+
+            return df
+
+        except Exception as e:
+            if log_func:
+                log_func(f"Error reading input file: {e}")
+            return None

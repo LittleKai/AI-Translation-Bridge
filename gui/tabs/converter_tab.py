@@ -39,7 +39,7 @@ class ConverterTab:
         label_frame = ttk.Frame(input_frame)
         label_frame.pack(fill=tk.X, pady=(0, 5))
 
-        ttk.Label(label_frame, text="Select Input (Supported: TXT, DOCX, EPUB):").pack(side=tk.LEFT)
+        ttk.Label(label_frame, text="Select Input: \n(Supported: TXT, DOCX, EPUB)").pack(side=tk.LEFT)
 
         # Add output format dropdown
         ttk.Label(label_frame, text="Output format:").pack(side=tk.LEFT, padx=(20, 5))
@@ -78,7 +78,7 @@ class ConverterTab:
         lang_combo.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=(5, 0))
 
         # Nhãn Ruby Handling
-        self.ruby_label = ttk.Label(lang_frame, text="Ruby Handling (EPUB only):")
+        self.ruby_label = ttk.Label(lang_frame, text="Furigana Handling (EPUB only):")
         self.ruby_label.grid(row=0, column=1, sticky="w", padx=(0, 5), pady=(5, 0))
 
         # Biến và combobox Ruby Handling

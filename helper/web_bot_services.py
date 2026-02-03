@@ -93,7 +93,7 @@ class WebBotServices:
                 click=False,
                 max_attempts=5,
                 delay_between=2.0,
-                confidence=0.85,
+                confidence=0.8,
                 return_all_coords=True
             )
 
@@ -137,7 +137,7 @@ class WebBotServices:
                 click=False,
                 max_attempts=5,
                 delay_between=2.0,
-                confidence=0.85,
+                confidence=0.8,
                 return_all_coords=True
             )
 
@@ -168,7 +168,7 @@ class WebBotServices:
                     region=processing_region,
                     click=False,
                     max_attempts=1,
-                    confidence=0.85,
+                    confidence=0.8,
                     log_func=None  # Don't log each check
                 )
 
@@ -212,7 +212,7 @@ class WebBotServices:
                 click=True,
                 max_attempts=3,
                 delay_between=1.0,
-                confidence=0.85
+                confidence=0.8
             )
 
             if not copy_result:
@@ -251,9 +251,10 @@ class WebBotServices:
 
             if service_name == "Perplexity":
                 top_region = (screen_width/2, 0, screen_width, 150)
+                delete_region = (screen_width/2, 0, screen_width, 800)
             else:
                 top_region = (0, 0, screen_width/2, 150)
-
+                delete_region = (0, 0, screen_width/2, 800)
             # Click more/options button
             more_clicked = find_and_click(
                 f"{assets_folder}/{config['more_btn']}",
@@ -261,7 +262,7 @@ class WebBotServices:
                 click=True,
                 max_attempts=3,
                 delay_between=1.0,
-                confidence=0.85
+                confidence=0.8
             )
 
             if more_clicked:
@@ -270,10 +271,11 @@ class WebBotServices:
                 # Click delete button
                 delete_clicked = find_and_click(
                     f"{assets_folder}/{config['delete_btn']}",
+                    region=delete_region,
                     click=True,
                     max_attempts=3,
                     delay_between=1.0,
-                    confidence=0.85
+                    confidence=0.8
                 )
 
                 if delete_clicked:
@@ -285,7 +287,7 @@ class WebBotServices:
                         click=True,
                         max_attempts=3,
                         delay_between=1.0,
-                        confidence=0.85
+                        confidence=0.8
                     )
 
                     if confirm_clicked:

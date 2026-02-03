@@ -12,14 +12,14 @@ class WindowManager:
 
         # Default window settings
         self.window_settings = {
-            'width': 500,
+            'width': 400,
             'height': 750,
             'x': 1400,
             'y': 20
         }
 
         # Store original size for compact mode toggle
-        self.original_size = {'width': 500, 'height': 750}
+        self.original_size = {'width': 400, 'height': 750}
 
     def load_initial_settings(self):
         """Load initial settings including window position before GUI setup"""
@@ -33,7 +33,7 @@ class WindowManager:
                     self.window_settings.update(settings['window'])
                     # Store original size
                     self.original_size = {
-                        'width': self.window_settings.get('width', 500),
+                        'width': self.window_settings.get('width', 400),
                         'height': self.window_settings.get('height', 750)
                     }
 
@@ -48,7 +48,7 @@ class WindowManager:
         """Setup window with loaded settings"""
         settings = self.window_settings
 
-        width = max(500, settings.get('width', 500))
+        width = max(400, settings.get('width', 400))
         height = max(750, settings.get('height', 750))
 
         # Get saved position or use default
@@ -77,7 +77,7 @@ class WindowManager:
         y = max(0, y)
 
         # Set window properties
-        self.main_window.root.minsize(500, 750)
+        self.main_window.root.minsize(400, 750)
         self.main_window.root.geometry(f"{width}x{height}+{x}+{y}")
         self.main_window.root.resizable(True, True)
         self.main_window.root.attributes('-topmost', True)

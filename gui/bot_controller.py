@@ -89,10 +89,9 @@ class BotController:
             self.main_window.root.after(0, self.main_window.stop_bot)
             return None, None, None, None, None
 
-        # Read and validate input CSV
-        df = pd.read_csv(input_file)
-        if 'text' not in df.columns:
-            self.main_window.log_message("Error: CSV file must have 'text' column")
+        # Read input file using PromptHelper
+        df = PromptHelper.read_input_file(input_file, self.main_window.log_message)
+        if df is None:
             self.main_window.root.after(0, self.main_window.stop_bot)
             return None, None, None, None, None
 
@@ -248,28 +247,40 @@ class BotController:
     def _save_intermediate_results(self, existing_results, output_path, all_input_ids):
         """Save intermediate results to file"""
         if existing_results:
-            results_list = list(existing_results.values())
-            results_df = pd.DataFrame(results_list)
-            results_df_sorted = results_df.sort_values('id')
-            results_df_sorted.to_csv(output_path, index=False)
+            # Use PromptHelper to save with proper format detection and encoding
+            save_success = PromptHelper.save_results(existing_results, output_path)
 
-            # Update progress
-            self.main_window.translation_processor.current_output_file = output_path
-            self.main_window.translation_processor.total_input_rows = len(all_input_ids)
-            self.main_window.translation_processor.update_progress()
+            if save_success:
+                # Update progress
+                self.main_window.translation_processor.current_output_file = output_path
+                self.main_window.translation_processor.total_input_rows = len(all_input_ids)
+                self.main_window.translation_processor.update_progress()
+            else:
+                self.main_window.log_message(f"Warning: Failed to save intermediate results to {output_path}")
 
     def _generate_summary(self, existing_results, output_path):
         """Generate and display final summary"""
         if existing_results:
-            results_list = list(existing_results.values())
-            completed_count = sum(1 for r in results_list if r.get('edit') and str(r.get('edit')).strip())
-            failed_count = sum(1 for r in results_list if not r.get('edit') or not str(r.get('edit')).strip())
+            # Save final results using PromptHelper
+            save_success = PromptHelper.save_results(existing_results, output_path)
 
-            self.main_window.log_message(f"Processing completed!")
-            self.main_window.log_message(f"Total: {len(results_list)} rows")
-            self.main_window.log_message(f"Successful: {completed_count} rows")
-            self.main_window.log_message(f"Failed: {failed_count} rows")
-            self.main_window.log_message(f"Output saved to: {output_path}")
+            if save_success:
+                results_list = list(existing_results.values())
+                completed_count = sum(1 for r in results_list if r.get('edit') and str(r.get('edit')).strip())
+                failed_count = sum(1 for r in results_list if not r.get('edit') or not str(r.get('edit')).strip())
+
+                self.main_window.log_message(f"Processing completed!")
+                self.main_window.log_message(f"Total: {len(results_list)} rows")
+                self.main_window.log_message(f"Successful: {completed_count} rows")
+                self.main_window.log_message(f"Failed: {failed_count} rows")
+                self.main_window.log_message(f"Output saved to: {output_path}")
+
+                # Check actual file size
+                if os.path.exists(output_path):
+                    actual_size = os.path.getsize(output_path)
+                    self.main_window.log_message(f"File size: {actual_size:,} bytes")
+            else:
+                self.main_window.log_message(f"ERROR: Failed to save final results!")
 
     def process_batch_results(self, batch, translations, input_file, prompt_type):
         """Process batch results and save to output file"""

@@ -40,7 +40,7 @@ class ProcessingTab:
         # API configuration
         self.api_configs = {
             'Gemini API': {
-                'models': ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro',
+                'models': ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash',
                            'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview'],
                 'default_model': 'gemini-2.5-flash-lite',
                 'keys': [],
