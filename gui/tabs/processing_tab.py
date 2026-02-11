@@ -44,7 +44,7 @@ class ProcessingTab:
                            'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview'],
                 'default_model': 'gemini-2.5-flash-lite',
                 'keys': [],
-                'request_delay': 0,
+                'request_delay': 5,
                 'max_tokens': 8192,
                 'temperature': 0.7,
                 'top_p': 0.95,
@@ -56,7 +56,7 @@ class ProcessingTab:
                            'gpt-5.2'],
                 'default_model': 'gpt-4o-mini',
                 'keys': [],
-                'request_delay': 0,
+                'request_delay': 5,
                 'max_tokens': 4096,
                 'temperature': 0.7,
                 'top_p': 0.95,
@@ -68,7 +68,7 @@ class ProcessingTab:
                            'claude-haiku-4-5-20251001','claude-sonnet-4-5-20250929','anthropic.claude-opus-4-5-20251101-v1:0'],
                 'default_model': 'claude-3-5-sonnet-20241022',
                 'keys': [],
-                'request_delay': 0,
+                'request_delay': 5,
                 'max_tokens': 4096,
                 'temperature': 0.7,
                 'top_p': 0.95,
@@ -79,7 +79,7 @@ class ProcessingTab:
                 'models': ['grok-3-mini', 'grok-4-fast-non-reasoning', 'grok-4-fast-reasoning','grok-4-1-fast-non-reasoning', 'grok-4-1-fast-reasoning'],
                 'default_model': 'grok-3-mini',
                 'keys': [],
-                'request_delay': 0,
+                'request_delay': 5,
                 'max_tokens': 4096,
                 'temperature': 0.7,
                 'top_p': 0.95,
@@ -380,7 +380,7 @@ class ProcessingTab:
         # Service selection
         ttk.Label(self.auto_frame, text="Select Service:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
 
-        services = ["Gemini", "ChatGPT", "Claude", "Perplexity", "Grok",
+        services = ["Perplexity",
                     "Gemini API", "Gemini CLI", "ChatGPT API", "Claude API", "Grok API"]
         self.ai_dropdown = ttk.Combobox(
             self.auto_frame,
