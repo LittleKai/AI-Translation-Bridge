@@ -34,7 +34,7 @@ class TranslationProcessor:
                         # If Excel file is corrupt, try CSV fallback
                         csv_path = self.current_output_file.replace('.xlsx', '.csv').replace('.xls', '.csv')
                         if os.path.exists(csv_path):
-                            output_df = pd.read_csv(csv_path)
+                            output_df = pd.read_csv(csv_path, encoding='utf-8', encoding_errors='replace')
                         else:
                             self.processed_rows = 0
                             self.main_window.status_section.set_progress(
@@ -44,7 +44,7 @@ class TranslationProcessor:
                             )
                             return
                 else:
-                    output_df = pd.read_csv(self.current_output_file)
+                    output_df = pd.read_csv(self.current_output_file, encoding='utf-8', encoding_errors='replace')
 
                 # Count rows with text in edit column as processed
                 if 'edit' in output_df.columns:
@@ -101,8 +101,8 @@ class TranslationProcessor:
             # Load API configuration
             ai_service = processing_settings.get('ai_service')
             # Check if it's an API service
-            if "API" not in ai_service:
-                self.main_window.log_message(f"Error: {ai_service} is not an API service. Use web interface mode instead.")
+            if ai_service not in self.main_window.processing_tab.api_configs:
+                self.main_window.log_message(f"Error: {ai_service} is not an API/CLI service. Use web interface mode instead.")
                 self.main_window.status_section.set_bot_status("Error: Not API service", "red")
                 return
 
@@ -207,7 +207,7 @@ class TranslationProcessor:
 
         if os.path.exists(output_file):
             try:
-                existing_df = pd.read_csv(output_file)
+                existing_df = pd.read_csv(output_file, encoding='utf-8', encoding_errors='replace')
                 if not existing_df.empty:
                     for _, row in existing_df.iterrows():
                         row_id = row['id']
@@ -304,18 +304,34 @@ class TranslationProcessor:
             # Format prompt with actual values
             count_info = f"Nội dung bao gồm {len(batch_df)} dòng có đánh số từ 1 đến {len(batch_df)}."
             prompt = prompt_template.format(count_info=count_info, text=batch_text)
-            # Call appropriate API
+            # Call appropriate API with retry on failure
             translated_text = None
             error_msg = None
+            max_retries = 2
 
-            if ai_service == "Gemini API":
-                translated_text, error_msg = self.api_handler.call_gemini_api(prompt, model_name, api_config, self.current_api_keys)
-            elif ai_service == "ChatGPT API":
-                translated_text, error_msg = self.api_handler.call_openai_api(prompt, model_name, api_config, self.current_api_keys)
-            elif ai_service == "Claude API":
-                translated_text, error_msg = self.api_handler.call_claude_api(prompt, model_name, api_config, self.current_api_keys)
-            elif ai_service == "Grok API":
-                translated_text, error_msg = self.api_handler.call_grok_api(prompt, model_name, api_config, self.current_api_keys)
+            for attempt in range(1, max_retries + 1):
+                if not self.is_running:
+                    break
+
+                if ai_service == "Gemini API":
+                    translated_text, error_msg = self.api_handler.call_gemini_api(prompt, model_name, api_config, self.current_api_keys)
+                elif ai_service == "ChatGPT API":
+                    translated_text, error_msg = self.api_handler.call_openai_api(prompt, model_name, api_config, self.current_api_keys)
+                elif ai_service == "Claude API":
+                    translated_text, error_msg = self.api_handler.call_claude_api(prompt, model_name, api_config, self.current_api_keys)
+                elif ai_service == "Grok API":
+                    translated_text, error_msg = self.api_handler.call_grok_api(prompt, model_name, api_config, self.current_api_keys)
+                elif ai_service == "Gemini CLI":
+                    translated_text, error_msg = self.api_handler.call_gemini_cli(prompt, model_name, api_config, self.current_api_keys)
+
+                if translated_text:
+                    break  # Success
+
+                # Retry if not last attempt
+                if attempt < max_retries:
+                    self.main_window.log_message(f"Batch {batch_num} attempt {attempt} failed: {error_msg}. Retrying...")
+                    import time
+                    time.sleep(5)
 
             if translated_text:
                 # Parse translated text
@@ -331,16 +347,16 @@ class TranslationProcessor:
                         'edit': translation,
                         'status': '' if translation else 'failed'
                     }
+
+                # Auto-save after each batch
+                PromptHelper.save_results(existing_results, output_file)
+                self.update_progress()
             else:
-                # Mark batch as failed
-                self.main_window.log_message(f"Batch {batch_num} failed: {error_msg}")
-                for idx, row in batch_df.iterrows():
-                    existing_results[row['id']] = {
-                        'id': row['id'],
-                        'raw': row['text'],
-                        'edit': '',
-                        'status': 'failed'
-                    }
+                # All retries failed - stop processing
+                self.main_window.log_message(f"Batch {batch_num} failed after {max_retries} attempts: {error_msg}")
+                self.main_window.log_message("Stopping processing. Fix the issue and restart to resume.")
+                self.is_running = False
+                break
 
             rows_processed_count += len(batch_df)
 

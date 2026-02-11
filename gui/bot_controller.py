@@ -201,23 +201,19 @@ class BotController:
             service_name, prompt, batch_text, len(batch)
         )
 
-        # Check for critical errors
-        if error and "Critical:" in error:
-            self.main_window.log_message(f"Critical error encountered: {error}")
-            self._mark_batch_as_failed(batch, existing_results, 'failed - critical error')
-            return True  # Critical error occurred
+        # Check for errors - stop on any failure
+        if error or not translations:
+            self.main_window.log_message(f"Batch {batch_num} failed: {error}")
+            self.main_window.log_message("Stopping processing. Fix the issue and restart to resume.")
+            return True  # Stop processing
 
         # Process results
-        if translations:
-            self._process_successful_batch(batch, translations, existing_results)
-        else:
-            self.main_window.log_message(f"Failed to get translations: {error}")
-            self._mark_batch_as_failed(batch, existing_results, 'failed')
+        self._process_successful_batch(batch, translations, existing_results)
 
         # Save intermediate results
         self._save_intermediate_results(existing_results, output_path, all_input_ids)
 
-        return False  # No critical error
+        return False  # OK
 
     def _create_batch_text(self, batch):
         """Create numbered text from batch dataframe"""

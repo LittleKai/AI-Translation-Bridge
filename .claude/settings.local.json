@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "WebSearch",
+      "WebFetch(domain:geminicli.com)",
+      "Bash(python:*)",
+      "Bash(where:*)",
+      "Bash(conda run python:*)",
+      "Bash(py -c:*)",
+      "Bash(git config:*)",
+      "Bash(dir:*)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }

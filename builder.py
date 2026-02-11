@@ -16,7 +16,11 @@ class AIBridgeBuilder:
 
         self.app_name = "AI Translation Bridge"
         self.app_filename = "AI_Translation_Bridge"
-        self.version = "1.0.0"
+
+        # Import version from central version.py
+        sys.path.insert(0, str(self.project_root))
+        from version import __version__
+        self.version = __version__
 
         # CẤU HÌNH BUILD
         self.build_options = {
@@ -250,6 +254,9 @@ exe = EXE(
                 print(f"  Main file: {dst_exe}")
                 print(f"  Assets dir: {assets_dst}")
 
+                # Create release zip for GitHub upload
+                self.create_release_zip(final_release_dir)
+
             self.clean_temp_files()
             if self.dist_dir.exists(): shutil.rmtree(self.dist_dir)
             return True
@@ -257,6 +264,28 @@ exe = EXE(
             print("✗ Build failed!")
             print(result.stderr)
             return False
+
+    def create_release_zip(self, release_dir):
+        """Create a zip file from the release folder for GitHub upload"""
+        import zipfile
+
+        releases_dir = self.project_root / "releases"
+        zip_name = f"{self.app_filename}_v{self.version}.zip"
+        zip_path = releases_dir / zip_name
+
+        print(f"\nCreating release zip: {zip_name}")
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(release_dir):
+                for file in files:
+                    file_path = Path(root) / file
+                    arcname = file_path.relative_to(release_dir)
+                    zf.write(file_path, arcname)
+
+        zip_size = zip_path.stat().st_size / (1024 * 1024)
+        print(f"✓ Release zip created: {zip_path} ({zip_size:.1f} MB)")
+        print(f"  Upload this file to GitHub Releases with tag: v{self.version}")
+
 
 if __name__ == "__main__":
     builder = AIBridgeBuilder()

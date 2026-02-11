@@ -9,6 +9,7 @@ settings.json
 key_validator.py
 version_info.txt
 AI_Translation_Bridge.spec
+nul
 
 # Ignore specific folders
 0. Temp/

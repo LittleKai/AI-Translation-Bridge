@@ -188,7 +188,7 @@ class PromptHelper:
                     print(f"[INFO] Falling back to CSV: {csv_path}")
 
                     try:
-                        results_df_sorted.to_csv(csv_path, index=False)
+                        results_df_sorted.to_csv(csv_path, index=False, encoding='utf-8-sig')
                         print(f"[SUCCESS] CSV fallback saved: {csv_path}")
                         return True
                     except Exception as csv_error:
@@ -196,7 +196,7 @@ class PromptHelper:
                         return False
             else:
                 # Save as CSV
-                results_df_sorted.to_csv(output_path, index=False)
+                results_df_sorted.to_csv(output_path, index=False, encoding='utf-8-sig')
                 print(f"[SUCCESS] CSV file saved: {output_path}")
                 return True
 
@@ -229,11 +229,11 @@ class PromptHelper:
                     # For large CSV files, read in chunks
                     if is_large_file:
                         chunks = []
-                        for chunk in pd.read_csv(output_path, chunksize=chunk_size):
+                        for chunk in pd.read_csv(output_path, chunksize=chunk_size, encoding='utf-8', encoding_errors='replace'):
                             chunks.append(chunk)
                         existing_df = pd.concat(chunks, ignore_index=True)
                     else:
-                        existing_df = pd.read_csv(output_path)
+                        existing_df = pd.read_csv(output_path, encoding='utf-8', encoding_errors='replace')
 
                 if not existing_df.empty:
                     for _, row in existing_df.iterrows():

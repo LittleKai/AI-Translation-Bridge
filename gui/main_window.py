@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import json
 
+from version import __version__
 from gui.window_manager import WindowManager
 from gui.components.status_section import StatusSection
 from gui.components.log_section import LogSection
@@ -21,7 +22,7 @@ class AITranslationBridgeGUI:
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("AI Translation Bridge - Developed by LittleKai")
+        self.root.title(f"AI Translation Bridge v{__version__} - Developed by LittleKai")
 
 
         # window icon
@@ -313,7 +314,7 @@ class AITranslationBridgeGUI:
                 self.toggle_compact_mode()
 
             # Check if it's an API service or web interface service
-            if "API" in ai_service:
+            if ai_service in self.processing_tab.api_configs:
                 # API mode - use translation processor
                 self.translation_processor.is_running = True
 

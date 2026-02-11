@@ -1,5 +1,6 @@
 import requests
 import random
+import time
 
 
 class AIAPIHandler:
@@ -8,6 +9,18 @@ class AIAPIHandler:
     def __init__(self, main_window):
         self.main_window = main_window
         self.failed_keys = set()
+        self._last_request_times = {}
+
+    def _apply_request_delay(self, service_name, config):
+        """Apply request delay between API calls for a given service"""
+        delay = config.get('request_delay', 0)
+        if delay > 0 and service_name in self._last_request_times:
+            elapsed = time.time() - self._last_request_times[service_name]
+            if elapsed < delay:
+                wait_time = delay - elapsed
+                self.main_window.log_message(f"Request delay: waiting {wait_time:.1f}s...")
+                time.sleep(wait_time)
+        self._last_request_times[service_name] = time.time()
 
     def get_random_api_key(self, api_keys):
         """Get a random API key from available keys"""
@@ -39,6 +52,7 @@ class AIAPIHandler:
         }
 
         try:
+            self._apply_request_delay('gemini_api', config)
             self.main_window.log_message(f"Calling Gemini API with model: {model_name}")
             response = requests.post(url, json=payload, timeout=30)
             
@@ -93,6 +107,7 @@ class AIAPIHandler:
         }
 
         try:
+            self._apply_request_delay('chatgpt_api', config)
             self.main_window.log_message(f"Calling ChatGPT API with model: {model_name}")
             response = requests.post(url, headers=headers, json=payload, timeout=30)
             
@@ -148,6 +163,7 @@ class AIAPIHandler:
         }
 
         try:
+            self._apply_request_delay('claude_api', config)
             self.main_window.log_message(f"Calling Claude API with model: {model_name}")
             response = requests.post(url, headers=headers, json=payload, timeout=30)
             
@@ -202,6 +218,7 @@ class AIAPIHandler:
         }
 
         try:
+            self._apply_request_delay('grok_api', config)
             self.main_window.log_message(f"Calling Grok API with model: {model_name}")
             response = requests.post(url, headers=headers, json=payload, timeout=30)
             
@@ -229,6 +246,68 @@ class AIAPIHandler:
             return None, error_msg
         except Exception as e:
             error_msg = f"Grok API exception: {str(e)}"
+            self.main_window.log_message(f"Error: {error_msg}")
+            return None, error_msg
+
+    def call_gemini_cli(self, prompt, model_name, config, api_keys):
+        """Call Gemini via proxy API (OpenAI-compatible endpoint)"""
+        api_key = self.get_random_api_key(api_keys)
+        if not api_key:
+            error_msg = "No available API keys for Gemini CLI"
+            self.main_window.log_message(f"Error: {error_msg}")
+            return None, error_msg
+
+        # Build endpoint URL from proxy base URL
+        proxy_url = config.get('proxy_url', 'https://gcli.ggchan.dev').rstrip('/')
+        url = f"{proxy_url}/v1/chat/completions"
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": config.get('max_tokens', 8192),
+            "temperature": config.get('temperature', 0.7),
+            "top_p": config.get('top_p', 0.95)
+        }
+
+        try:
+            self._apply_request_delay('gemini_cli', config)
+            self.main_window.log_message(f"Calling Gemini CLI proxy ({proxy_url}) with model: {model_name}")
+            response = requests.post(url, headers=headers, json=payload, timeout=120)
+
+            if response.status_code == 200:
+                result = response.json()
+                if 'choices' in result and result['choices']:
+                    text = result['choices'][0].get('message', {}).get('content', '')
+                    if text and text.strip():
+                        self.main_window.log_message("Gemini CLI proxy call successful")
+                        return text, None
+                    else:
+                        error_msg = "Gemini CLI proxy returned empty content"
+                        self.main_window.log_message(f"Error: {error_msg}")
+                        return None, error_msg
+                else:
+                    error_msg = f"No valid response from Gemini CLI proxy: {str(result)[:200]}"
+                    self.main_window.log_message(f"Error: {error_msg}")
+                    return None, error_msg
+            else:
+                error_msg = f"Gemini CLI proxy error - Status: {response.status_code}, Response: {response.text[:500]}"
+                self.main_window.log_message(f"Error: {error_msg}")
+                if response.status_code in [401, 403]:
+                    self.failed_keys.add(api_key)
+                    self.main_window.log_message(f"API key marked as failed: {api_key[:10]}...")
+                return None, error_msg
+
+        except requests.exceptions.Timeout:
+            error_msg = "Gemini CLI proxy timeout (120s exceeded)"
+            self.main_window.log_message(f"Error: {error_msg}")
+            return None, error_msg
+        except Exception as e:
+            error_msg = f"Gemini CLI proxy exception: {str(e)}"
             self.main_window.log_message(f"Error: {error_msg}")
             return None, error_msg
 

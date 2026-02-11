@@ -40,10 +40,11 @@ class ProcessingTab:
         # API configuration
         self.api_configs = {
             'Gemini API': {
-                'models': ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash',
+                'models': ['gemini-2.5-flash-lite', 'gemini-2.5-flash',
                            'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview'],
                 'default_model': 'gemini-2.5-flash-lite',
                 'keys': [],
+                'request_delay': 0,
                 'max_tokens': 8192,
                 'temperature': 0.7,
                 'top_p': 0.95,
@@ -55,6 +56,7 @@ class ProcessingTab:
                            'gpt-5.2'],
                 'default_model': 'gpt-4o-mini',
                 'keys': [],
+                'request_delay': 0,
                 'max_tokens': 4096,
                 'temperature': 0.7,
                 'top_p': 0.95,
@@ -66,6 +68,7 @@ class ProcessingTab:
                            'claude-haiku-4-5-20251001','claude-sonnet-4-5-20250929','anthropic.claude-opus-4-5-20251101-v1:0'],
                 'default_model': 'claude-3-5-sonnet-20241022',
                 'keys': [],
+                'request_delay': 0,
                 'max_tokens': 4096,
                 'temperature': 0.7,
                 'top_p': 0.95,
@@ -76,11 +79,25 @@ class ProcessingTab:
                 'models': ['grok-3-mini', 'grok-4-fast-non-reasoning', 'grok-4-fast-reasoning','grok-4-1-fast-non-reasoning', 'grok-4-1-fast-reasoning'],
                 'default_model': 'grok-3-mini',
                 'keys': [],
+                'request_delay': 0,
                 'max_tokens': 4096,
                 'temperature': 0.7,
                 'top_p': 0.95,
                 'top_k': 40,
                 'help_url': 'https://docs.x.ai/docs/models'
+            },
+            'Gemini CLI': {
+                'models': ['gemini-2.5-flash', 'gemini-2.5-pro',
+                           'gemini-3-flash-preview', 'gemini-3-pro-preview'],
+                'default_model': 'gemini-2.5-flash',
+                'keys': [],
+                'proxy_url': 'https://gcli.ggchan.dev',
+                'request_delay': 5,
+                'max_tokens': 8192,
+                'temperature': 0.7,
+                'top_p': 0.95,
+                'top_k': 40,
+                'help_url': 'https://github.com/google-gemini/gemini-cli'
             }
         }
 
@@ -184,12 +201,23 @@ class ProcessingTab:
         batch_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         batch_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(batch_frame, text="Batch Size:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        batch_label_row = ttk.Frame(batch_frame)
+        batch_label_row.grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        ttk.Label(batch_label_row, text="Batch Size:").pack(side=tk.LEFT)
+        help_btn = ttk.Button(batch_label_row, text="?", width=2,
+                              command=lambda: messagebox.showinfo("Batch Size",
+                                  "Number of lines sent to AI per request.\n\n"
+                                  "Recommended: 50\n"
+                                  "Best range: 50 - 100\n\n"
+                                  "Higher batch size = better context for AI to understand the text, "
+                                  "but increases the chance of mistranslation, "
+                                  "especially with loose prompts."))
+        help_btn.pack(side=tk.LEFT, padx=(3, 0))
 
         batch_entry = ttk.Entry(batch_frame, textvariable=self.batch_size, width=10)
         batch_entry.grid(row=0, column=1, sticky=tk.W)
 
-        ttk.Label(batch_frame, text="(Number of csv lines to process at once)",
+        ttk.Label(batch_frame, text="(Recommended: 50, best range: 50-100)",
                   font=("Arial", 9), foreground="gray").grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
 
     def create_prompt_section(self, parent, row):
@@ -352,7 +380,8 @@ class ProcessingTab:
         # Service selection
         ttk.Label(self.auto_frame, text="Select Service:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
 
-        services = ["Gemini", "ChatGPT", "Claude", "Perplexity", "Grok", "Gemini API", "ChatGPT API", "Claude API", "Grok API"]
+        services = ["Gemini", "ChatGPT", "Claude", "Perplexity", "Grok",
+                    "Gemini API", "Gemini CLI", "ChatGPT API", "Claude API", "Grok API"]
         self.ai_dropdown = ttk.Combobox(
             self.auto_frame,
             textvariable=self.ai_service,
@@ -417,7 +446,7 @@ class ProcessingTab:
         service = self.ai_service.get()
 
         # Show/hide model configuration based on service type
-        if "API" in service:
+        if service in self.api_configs:
             self.model_frame.grid()
 
             # Load saved model or use default
@@ -470,7 +499,7 @@ class ProcessingTab:
         # Add API configurations and save current model
         settings['api_configs'] = {}
         for service, config in self.api_configs.items():
-            settings['api_configs'][service] = {
+            cfg = {
                 'keys': config['keys'],
                 'max_tokens': config['max_tokens'],
                 'temperature': config['temperature'],
@@ -478,6 +507,11 @@ class ProcessingTab:
                 'top_k': config['top_k'],
                 'saved_model': self.ai_model.get() if service == self.ai_service.get() else config.get('saved_model', '')
             }
+            if 'proxy_url' in config:
+                cfg['proxy_url'] = config['proxy_url']
+            if 'request_delay' in config:
+                cfg['request_delay'] = config['request_delay']
+            settings['api_configs'][service] = cfg
 
         return settings
 

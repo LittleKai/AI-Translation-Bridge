@@ -86,6 +86,25 @@ class APISettingsDialog:
 
         row += 1
 
+        # Proxy URL section (only for services with proxy_url config)
+        if 'proxy_url' in self.config:
+            proxy_frame = ttk.LabelFrame(main_frame, text="Proxy Server", padding="10")
+            proxy_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+            proxy_frame.columnconfigure(1, weight=1)
+
+            proxy_url_row = ttk.Frame(proxy_frame)
+            proxy_url_row.grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+            ttk.Label(proxy_url_row, text="Proxy URL:").pack(side=tk.LEFT)
+            self._add_help_button(proxy_url_row,
+                                  "Proxy URL: The proxy server address.\n"
+                                  "Endpoint will be: {URL}/v1/chat/completions\n"
+                                  "The API key above is used as the proxy password (Bearer token).")
+            self.proxy_url_var = tk.StringVar(value=self.config.get('proxy_url', ''))
+            proxy_entry = ttk.Entry(proxy_frame, textvariable=self.proxy_url_var, width=40)
+            proxy_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
+
+            row += 1
+
         # Model selection
         model_frame = ttk.LabelFrame(main_frame, text="Model Configuration", padding="10")
         model_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
@@ -107,14 +126,29 @@ class APISettingsDialog:
         params_frame.columnconfigure(1, weight=1)
 
         # Max tokens
-        ttk.Label(params_frame, text="Max Tokens:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        max_tokens_row = ttk.Frame(params_frame)
+        max_tokens_row.grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        ttk.Label(max_tokens_row, text="Max Tokens:").pack(side=tk.LEFT)
+        self._add_help_button(max_tokens_row,
+                              "Max Tokens: Maximum number of tokens in the output.\n"
+                              "1 token ~ 0.75 English words or ~1-2 CJK characters.\n"
+                              "Increase if the output gets cut off mid-sentence.\n"
+                              "Range: 100 - 32000")
         self.max_tokens_var = tk.IntVar(value=self.config['max_tokens'])
         max_tokens_spinbox = ttk.Spinbox(params_frame, from_=100, to=32000,
                                          textvariable=self.max_tokens_var, width=15)
         max_tokens_spinbox.grid(row=0, column=1, sticky=tk.W)
 
         # Temperature
-        ttk.Label(params_frame, text="Temperature:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        temp_label_row = ttk.Frame(params_frame)
+        temp_label_row.grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        ttk.Label(temp_label_row, text="Temperature:").pack(side=tk.LEFT)
+        self._add_help_button(temp_label_row,
+                              "Temperature: Controls the creativity/randomness of the AI.\n"
+                              "0.0 = Precise, deterministic (best for translation: 0.3-0.7)\n"
+                              "1.0 = Balanced\n"
+                              "2.0 = Very creative, may hallucinate\n"
+                              "Recommended for translation: 0.5 - 0.7")
         self.temperature_var = tk.DoubleVar(value=self.config['temperature'])
         temp_scale = ttk.Scale(params_frame, from_=0.0, to=2.0, variable=self.temperature_var,
                                orient=tk.HORIZONTAL, length=200)
@@ -124,7 +158,15 @@ class APISettingsDialog:
         temp_scale.config(command=self.update_temp_label)
 
         # Top P
-        ttk.Label(params_frame, text="Top P:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        top_p_label_row = ttk.Frame(params_frame)
+        top_p_label_row.grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        ttk.Label(top_p_label_row, text="Top P:").pack(side=tk.LEFT)
+        self._add_help_button(top_p_label_row,
+                              "Top P (Nucleus Sampling): Limits the pool of candidate tokens.\n"
+                              "0.1 = Only pick from the top 10% most probable tokens\n"
+                              "0.95 = Pick from top 95% (more diverse output)\n"
+                              "1.0 = No restriction\n"
+                              "Recommended: 0.9 - 0.95")
         self.top_p_var = tk.DoubleVar(value=self.config['top_p'])
         top_p_scale = ttk.Scale(params_frame, from_=0.0, to=1.0, variable=self.top_p_var,
                                 orient=tk.HORIZONTAL, length=200)
@@ -135,13 +177,37 @@ class APISettingsDialog:
 
         # Top K (if applicable)
         if self.config.get('top_k') is not None:
-            ttk.Label(params_frame, text="Top K:").grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+            top_k_label_row = ttk.Frame(params_frame)
+            top_k_label_row.grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+            ttk.Label(top_k_label_row, text="Top K:").pack(side=tk.LEFT)
+            self._add_help_button(top_k_label_row,
+                                  "Top K: Limits the number of candidate tokens.\n"
+                                  "At each step, the AI picks only from the K most probable tokens.\n"
+                                  "1 = Always pick the most probable token (deterministic)\n"
+                                  "40 = Pick from top 40 tokens (default)\n"
+                                  "Recommended: 20 - 40")
             self.top_k_var = tk.IntVar(value=self.config['top_k'])
             top_k_spinbox = ttk.Spinbox(params_frame, from_=1, to=100,
                                         textvariable=self.top_k_var, width=15)
             top_k_spinbox.grid(row=3, column=1, sticky=tk.W, pady=(5, 0))
         else:
             self.top_k_var = None
+
+        # Request Delay
+        delay_label_row = ttk.Frame(params_frame)
+        delay_label_row.grid(row=4, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        ttk.Label(delay_label_row, text="Request Delay:").pack(side=tk.LEFT)
+        self._add_help_button(delay_label_row,
+                              "Request Delay: Wait time (seconds) between API requests.\n"
+                              "Helps avoid rate limiting from the API provider.\n"
+                              "0 = No delay (send requests immediately)\n"
+                              "5 = Wait 5 seconds between each request\n"
+                              "Default: 0 for direct APIs, 5 for proxy services")
+        self.request_delay_var = tk.IntVar(value=self.config.get('request_delay', 0))
+        delay_spinbox = ttk.Spinbox(params_frame, from_=0, to=60,
+                                    textvariable=self.request_delay_var, width=15)
+        delay_spinbox.grid(row=4, column=1, sticky=tk.W, pady=(5, 0))
+        ttk.Label(params_frame, text="seconds").grid(row=4, column=2, padx=(5, 0), pady=(5, 0))
 
         row += 1
 
@@ -151,6 +217,12 @@ class APISettingsDialog:
 
         ttk.Button(button_frame, text="Cancel", command=self.on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(button_frame, text="Save", command=self.on_save).pack(side=tk.RIGHT)
+
+    def _add_help_button(self, parent, help_text):
+        """Add a (?) button that shows a tooltip messagebox"""
+        btn = ttk.Button(parent, text="?", width=2,
+                         command=lambda: messagebox.showinfo("Help", help_text, parent=self.window))
+        btn.pack(side=tk.LEFT, padx=(3, 0))
 
     def update_temp_label(self, value):
         """Update temperature label display"""
@@ -290,6 +362,13 @@ class APISettingsDialog:
 
         # Store plain keys directly - they will be encrypted when saved to file
         self.config['keys'] = self.actual_keys.copy()
+
+        # Save request delay
+        self.config['request_delay'] = self.request_delay_var.get()
+
+        # Save proxy settings if applicable
+        if hasattr(self, 'proxy_url_var'):
+            self.config['proxy_url'] = self.proxy_url_var.get().strip()
 
         # Update processing tab configuration
         self.processing_tab.api_configs[self.service_name] = self.config.copy()
