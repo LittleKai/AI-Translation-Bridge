@@ -28,6 +28,7 @@ class ProcessingTab:
     def init_variables(self):
         """Initialize tab variables"""
         self.batch_size = tk.StringVar(value="10")
+        self.retry_on_missing_lines = tk.BooleanVar(value=True)
         self.prompt_type = tk.StringVar(value="")
         self.ai_service = tk.StringVar(value="Gemini")
         self.ai_model = tk.StringVar(value="")
@@ -157,6 +158,7 @@ class ProcessingTab:
         """Bind variable changes to auto-save"""
         variables = [
             self.batch_size,
+            self.retry_on_missing_lines,
             self.prompt_type,
             self.ai_service,
             self.ai_model
@@ -219,6 +221,7 @@ class ProcessingTab:
 
         ttk.Label(batch_frame, text="(Recommended: 50, best range: 50-100)",
                   font=("Arial", 9), foreground="gray").grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
+
 
     def create_prompt_section(self, parent, row):
         """Create prompt selection section with add button"""
@@ -490,6 +493,7 @@ class ProcessingTab:
         """Get current tab settings"""
         settings = {
             'batch_size': self.batch_size.get(),
+            'retry_on_missing_lines': self.retry_on_missing_lines.get(),
             'prompt_type': self.prompt_type.get(),
             'ai_service': self.ai_service.get(),
             'ai_model': self.ai_model.get(),
@@ -520,6 +524,8 @@ class ProcessingTab:
         try:
             if 'batch_size' in settings:
                 self.batch_size.set(settings['batch_size'])
+            if 'retry_on_missing_lines' in settings:
+                self.retry_on_missing_lines.set(settings['retry_on_missing_lines'])
             if 'prompt_type' in settings:
                 self.prompt_type.set(settings['prompt_type'])
             if 'ai_service' in settings:
@@ -561,6 +567,9 @@ class ProcessingTab:
 
     def copy_prompt_manual(self):
         """Copy prompt to clipboard for manual processing"""
+        if not self.main_window.key_valid:
+            messagebox.showwarning("Key Required", "Please enter a valid application key in Settings.")
+            return
         try:
             # Reset previous batch data
             self.manual_batch_data = None

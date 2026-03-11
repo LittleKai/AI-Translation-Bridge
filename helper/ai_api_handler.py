@@ -287,27 +287,71 @@ class AIAPIHandler:
                         self.main_window.log_message("Gemini CLI proxy call successful")
                         return text, None
                     else:
-                        error_msg = "Gemini CLI proxy returned empty content"
+                        finish_reason = result['choices'][0].get('finish_reason', 'unknown')
+                        usage = result.get('usage', {})
+                        prompt_tokens = usage.get('prompt_tokens', '?')
+                        completion_tokens = usage.get('completion_tokens', '?')
+
+                        # Diagnose the cause
+                        if finish_reason == 'stop' and completion_tokens == 0:
+                            error_type = "EMPTY_RESPONSE"
+                            cause = "Model returned 0 tokens - likely prompt too long, content blocked, or proxy issue"
+                        elif finish_reason in ['safety', 'content_filter']:
+                            error_type = "CONTENT_BLOCKED"
+                            cause = "Content blocked by safety filters - try adjusting prompt content"
+                        elif finish_reason == 'length':
+                            error_type = "MAX_TOKENS"
+                            cause = "Response truncated due to max tokens limit"
+                        else:
+                            error_type = "UNKNOWN"
+                            cause = f"finish_reason: {finish_reason}"
+
+                        error_msg = f"[{error_type}] {cause} (tokens: {prompt_tokens} in / {completion_tokens} out)"
                         self.main_window.log_message(f"Error: {error_msg}")
                         return None, error_msg
-                else:
-                    error_msg = f"No valid response from Gemini CLI proxy: {str(result)[:200]}"
+                elif 'error' in result:
+                    error_detail = result['error']
+                    detail_msg = error_detail.get('message', str(error_detail)[:300]) if isinstance(error_detail, dict) else str(error_detail)[:300]
+                    error_msg = f"[API_ERROR] {detail_msg}"
                     self.main_window.log_message(f"Error: {error_msg}")
                     return None, error_msg
-            else:
-                error_msg = f"Gemini CLI proxy error - Status: {response.status_code}, Response: {response.text[:500]}"
+                else:
+                    error_msg = f"[BAD_RESPONSE] Unexpected format - keys: {list(result.keys()) if isinstance(result, dict) else type(result).__name__}"
+                    self.main_window.log_message(f"Error: {error_msg}")
+                    return None, error_msg
+            elif response.status_code == 429:
+                error_msg = f"[RATE_LIMIT] Status 429 - try increasing request delay or reducing batch size"
                 self.main_window.log_message(f"Error: {error_msg}")
-                if response.status_code in [401, 403]:
-                    self.failed_keys.add(api_key)
-                    self.main_window.log_message(f"API key marked as failed: {api_key[:10]}...")
+                return None, error_msg
+            elif response.status_code in [401, 403]:
+                error_msg = f"[AUTH_ERROR] Status {response.status_code} - check your API key"
+                self.main_window.log_message(f"Error: {error_msg}")
+                self.failed_keys.add(api_key)
+                self.main_window.log_message(f"API key marked as failed: {api_key[:10]}...")
+                return None, error_msg
+            elif response.status_code >= 500:
+                error_msg = f"[SERVER_ERROR] Status {response.status_code} - proxy server may be down or overloaded"
+                self.main_window.log_message(f"Error: {error_msg}")
+                return None, error_msg
+            elif response.status_code == 404:
+                error_msg = f"[NOT_FOUND] Status 404 - model or endpoint not found. Check model name: {model_name}"
+                self.main_window.log_message(f"Error: {error_msg}")
+                return None, error_msg
+            else:
+                error_msg = f"[HTTP_{response.status_code}] {response.text[:200]}"
+                self.main_window.log_message(f"Error: {error_msg}")
                 return None, error_msg
 
         except requests.exceptions.Timeout:
-            error_msg = "Gemini CLI proxy timeout (120s exceeded)"
+            error_msg = "[TIMEOUT] Request exceeded 120s - proxy may be slow or unresponsive"
+            self.main_window.log_message(f"Error: {error_msg}")
+            return None, error_msg
+        except requests.exceptions.ConnectionError:
+            error_msg = "[CONNECTION_ERROR] Cannot connect to proxy - check internet or proxy URL"
             self.main_window.log_message(f"Error: {error_msg}")
             return None, error_msg
         except Exception as e:
-            error_msg = f"Gemini CLI proxy exception: {str(e)}"
+            error_msg = f"[EXCEPTION] {type(e).__name__}: {str(e)}"
             self.main_window.log_message(f"Error: {error_msg}")
             return None, error_msg
 

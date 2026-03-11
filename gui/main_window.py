@@ -141,9 +141,12 @@ class AITranslationBridgeGUI:
         self.notebook.add(converter_frame, text="Converter")
         self.converter_tab = ConverterTab(converter_frame, self)
 
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+
     def create_control_section(self, parent, row):
         """Create bot control buttons section"""
-        control_frame = ttk.Frame(parent)
+        self.control_frame = ttk.Frame(parent)
+        control_frame = self.control_frame
         control_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
         control_frame.columnconfigure(0, weight=1)
         control_frame.columnconfigure(1, weight=1)
@@ -171,6 +174,14 @@ class AITranslationBridgeGUI:
 
         # Keyboard shortcuts
         self.setup_keyboard_shortcuts()
+
+    def on_tab_changed(self, event):
+        """Hide/show Start and Stop buttons based on active tab"""
+        selected = self.notebook.tab(self.notebook.select(), "text")
+        if selected == "Converter":
+            self.control_frame.grid_remove()
+        else:
+            self.control_frame.grid()
 
     def setup_keyboard_shortcuts(self):
         """Setup keyboard shortcuts"""

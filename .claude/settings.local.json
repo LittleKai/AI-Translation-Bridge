@@ -10,7 +10,8 @@
       "Bash(py -c:*)",
       "Bash(git config:*)",
       "Bash(dir:*)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "Bash(ls -la /d/Dev/Python/AI_Translation_Bridge/*.py)"
     ]
   }
 }

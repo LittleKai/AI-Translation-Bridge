@@ -61,6 +61,16 @@ class SettingsDialog:
         self.update_status = ttk.Label(update_frame, text="", font=("Arial", 9))
         self.update_status.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(5, 0))
 
+        # Processing section
+        processing_frame = ttk.LabelFrame(main_frame, text="Processing", padding="10")
+        processing_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Checkbutton(
+            processing_frame,
+            text="Retry batch if response is missing lines",
+            variable=self.main_window.processing_tab.retry_on_missing_lines
+        ).pack(anchor=tk.W)
+
         # Button frame
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=(10, 0))
@@ -142,7 +152,7 @@ class SettingsDialog:
         self.window.update_idletasks()
 
         width = 400
-        height = 280
+        height = 330
 
         parent_x = self.main_window.root.winfo_x()
         parent_y = self.main_window.root.winfo_y()

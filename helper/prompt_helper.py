@@ -144,8 +144,6 @@ class PromptHelper:
             _, ext = os.path.splitext(output_path)
             ext = ext.lower()
 
-            print(f"[DEBUG] Saving to {output_path} with extension: {ext}")
-
             if ext in ['.xlsx', '.xls']:
                 try:
                     # Clean data before saving to Excel
@@ -197,7 +195,6 @@ class PromptHelper:
             else:
                 # Save as CSV
                 results_df_sorted.to_csv(output_path, index=False, encoding='utf-8-sig')
-                print(f"[SUCCESS] CSV file saved: {output_path}")
                 return True
 
         except Exception as e:

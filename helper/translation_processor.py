@@ -127,7 +127,8 @@ class TranslationProcessor:
                 int(processing_settings.get('batch_size', 10)),
                 processing_settings.get('prompt_type'),
                 translation_settings.get('start_id'),
-                translation_settings.get('stop_id')
+                translation_settings.get('stop_id'),
+                retry_on_missing=processing_settings.get('retry_on_missing_lines', True)
             )
 
         except Exception as e:
@@ -163,8 +164,22 @@ class TranslationProcessor:
             self.main_window.log_message
         )
 
+    def _call_api(self, ai_service, prompt, model_name, api_config):
+        """Call the appropriate API based on service type"""
+        if ai_service == "Gemini API":
+            return self.api_handler.call_gemini_api(prompt, model_name, api_config, self.current_api_keys)
+        elif ai_service == "ChatGPT API":
+            return self.api_handler.call_openai_api(prompt, model_name, api_config, self.current_api_keys)
+        elif ai_service == "Claude API":
+            return self.api_handler.call_claude_api(prompt, model_name, api_config, self.current_api_keys)
+        elif ai_service == "Grok API":
+            return self.api_handler.call_grok_api(prompt, model_name, api_config, self.current_api_keys)
+        elif ai_service == "Gemini CLI":
+            return self.api_handler.call_gemini_cli(prompt, model_name, api_config, self.current_api_keys)
+        return None, "Unknown service"
+
     def process_with_api(self, input_file, output_file, ai_service, model_name, api_config,
-                         batch_size, prompt_type, start_id, stop_id):
+                         batch_size, prompt_type, start_id, stop_id, retry_on_missing=True):
         """Process translation using AI API with proper missing/failed row handling"""
 
         # Load translation prompt
@@ -184,6 +199,20 @@ class TranslationProcessor:
             stop_id = int(stop_id) if stop_id else None
 
             original_df = df.copy()  # Keep original for reference
+            data_min_id = int(df['id'].min())
+            data_max_id = int(df['id'].max())
+
+            # If start_id is below the actual data range, remap relative to data's min id
+            if start_id is not None and stop_id is not None and start_id < data_min_id:
+                range_size = stop_id - start_id
+                start_id = data_min_id
+                stop_id = data_min_id + range_size
+                self.main_window.log_message(f"ID range remapped to data range: {start_id} -> {stop_id}")
+                # Update UI to reflect remapped values
+                self.main_window.root.after(0, lambda s=start_id, e=stop_id: (
+                    self.main_window.translation_tab.start_id.set(str(s)),
+                    self.main_window.translation_tab.stop_id.set(str(e))
+                ))
 
             if start_id is not None:
                 df = df[df['id'] >= start_id]
@@ -198,6 +227,9 @@ class TranslationProcessor:
 
         # Create a set of all IDs that should be in the output (from filtered input)
         all_input_ids = set(df['id'].tolist())
+        if not all_input_ids:
+            self.main_window.log_message("Error: No rows found in the specified ID range. Check your Start ID and Stop ID values.")
+            return
         self.main_window.log_message(f"Total IDs in range: {len(all_input_ids)} (Range: {min(all_input_ids)} to {max(all_input_ids)})")
 
         # Load existing output and check what needs processing
@@ -262,38 +294,41 @@ class TranslationProcessor:
         self.total_input_rows = len(all_input_ids)
         self.processed_rows = len(completed_ids & all_input_ids)
 
-        # Process IDs in batches
+        # Process IDs in batches with carry-over for failed rows
         batch_size = int(batch_size) if batch_size else 10
-        total_batches = (len(ids_to_process) - 1) // batch_size + 1 if len(ids_to_process) > 0 else 0
-        rows_processed_count = 0
+        ids_queue = list(ids_to_process)  # sorted list of IDs to process
+        carry_ids = []       # IDs that failed in the previous batch, merged into next
+        carried_once = set() # IDs already carried once (don't carry again to avoid infinite loop)
+        queue_idx = 0        # pointer into ids_queue
+        batch_num = 0
 
-        # Process IDs directly from the list, not from dataframe
-        for batch_num in range(1, total_batches + 1):
-            if not self.is_running:
-                self.main_window.log_message("Processing stopped by user")
-                break
+        while (queue_idx < len(ids_queue) or carry_ids) and self.is_running:
+            batch_num += 1
 
-            # Get batch of IDs
-            batch_start_idx = (batch_num - 1) * batch_size
-            batch_end_idx = min(batch_start_idx + batch_size, len(ids_to_process))
-            batch_ids = ids_to_process[batch_start_idx:batch_end_idx]
+            # Build batch: carried failures + next batch_size new IDs
+            new_ids = ids_queue[queue_idx:queue_idx + batch_size]
+            queue_idx += len(new_ids)
+            batch_ids = carry_ids + new_ids
+            carry_ids = []
 
-            # Get actual data for these specific IDs only
+            # Get actual data for these IDs
             batch_df = df[df['id'].isin(batch_ids)].sort_values('id')
-
-            if len(batch_df) != len(batch_ids):
-                self.main_window.log_message(f"Warning: Expected {len(batch_ids)} rows but found {len(batch_df)}")
-                # Some IDs might not have data in input file
-                missing_in_input = set(batch_ids) - set(batch_df['id'].tolist())
-                if missing_in_input:
-                    self.main_window.log_message(f"  IDs not found in input: {sorted(missing_in_input)}")
 
             if len(batch_df) == 0:
                 self.main_window.log_message(f"Skipping batch {batch_num} - no data found for IDs: {batch_ids}")
                 continue
 
-            actual_batch_ids = batch_df['id'].tolist()
-            self.main_window.log_message(f"Processing batch {batch_num}/{total_batches} (IDs: {min(actual_batch_ids)}-{max(actual_batch_ids)}, {len(batch_df)} rows)")
+            if len(batch_df) != len(batch_ids):
+                missing_in_input = set(batch_ids) - set(batch_df['id'].tolist())
+                if missing_in_input:
+                    self.main_window.log_message(f"  IDs not found in input: {sorted(missing_in_input)}")
+
+            actual_ids = batch_df['id'].tolist()
+            remaining_in_queue = len(ids_queue) - queue_idx
+            self.main_window.log_message(
+                f"Processing batch {batch_num} (IDs: {min(actual_ids)}-{max(actual_ids)}, "
+                f"{len(batch_df)} rows, {remaining_in_queue} remaining in queue)"
+            )
 
             # Create batch text
             batch_lines = []
@@ -301,10 +336,10 @@ class TranslationProcessor:
                 batch_lines.append(f"{j}. {row['text']}")
             batch_text = "\n".join(batch_lines)
 
-            # Format prompt with actual values
             count_info = f"Nội dung bao gồm {len(batch_df)} dòng có đánh số từ 1 đến {len(batch_df)}."
             prompt = prompt_template.format(count_info=count_info, text=batch_text)
-            # Call appropriate API with retry on failure
+
+            # Call API with retry on connection/API failure
             translated_text = None
             error_msg = None
             max_retries = 2
@@ -312,53 +347,76 @@ class TranslationProcessor:
             for attempt in range(1, max_retries + 1):
                 if not self.is_running:
                     break
-
-                if ai_service == "Gemini API":
-                    translated_text, error_msg = self.api_handler.call_gemini_api(prompt, model_name, api_config, self.current_api_keys)
-                elif ai_service == "ChatGPT API":
-                    translated_text, error_msg = self.api_handler.call_openai_api(prompt, model_name, api_config, self.current_api_keys)
-                elif ai_service == "Claude API":
-                    translated_text, error_msg = self.api_handler.call_claude_api(prompt, model_name, api_config, self.current_api_keys)
-                elif ai_service == "Grok API":
-                    translated_text, error_msg = self.api_handler.call_grok_api(prompt, model_name, api_config, self.current_api_keys)
-                elif ai_service == "Gemini CLI":
-                    translated_text, error_msg = self.api_handler.call_gemini_cli(prompt, model_name, api_config, self.current_api_keys)
-
+                translated_text, error_msg = self._call_api(ai_service, prompt, model_name, api_config)
                 if translated_text:
-                    break  # Success
-
-                # Retry if not last attempt
+                    break
                 if attempt < max_retries:
-                    self.main_window.log_message(f"Batch {batch_num} attempt {attempt} failed: {error_msg}. Retrying...")
-                    import time
-                    time.sleep(5)
+                    retry_delay = 5 * attempt
+                    self.main_window.log_message(f"Batch {batch_num} attempt {attempt}/{max_retries} failed: {error_msg}")
+                    self.main_window.log_message(f"Retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
 
-            if translated_text:
-                # Parse translated text
-                translations = self.parse_numbered_text(translated_text, len(batch_df))
-                successful_count = sum(1 for t in translations if t)
-                self.main_window.log_message(f"Batch {batch_num} completed: {successful_count}/{len(batch_df)} translations successful")
-
-                # Update results
-                for (idx, row), translation in zip(batch_df.iterrows(), translations):
-                    existing_results[row['id']] = {
-                        'id': row['id'],
-                        'raw': row['text'],
-                        'edit': translation,
-                        'status': '' if translation else 'failed'
-                    }
-
-                # Auto-save after each batch
-                PromptHelper.save_results(existing_results, output_file)
-                self.update_progress()
-            else:
-                # All retries failed - stop processing
-                self.main_window.log_message(f"Batch {batch_num} failed after {max_retries} attempts: {error_msg}")
-                self.main_window.log_message("Stopping processing. Fix the issue and restart to resume.")
+            if not translated_text:
+                self.main_window.log_message(f"Batch {batch_num} failed after {max_retries} attempts.")
+                self.main_window.log_message(f"Last error: {error_msg}")
+                self.main_window.log_message("Stopping processing. Progress has been saved - fix the issue and click Start to resume.")
                 self.is_running = False
                 break
 
-            rows_processed_count += len(batch_df)
+            # Parse translations
+            translations = self.parse_numbered_text(translated_text, len(batch_df))
+            successful_count = sum(1 for t in translations if t)
+            missing_count = len(batch_df) - successful_count
+
+            # Retry once if response is missing lines (and option is enabled)
+            if missing_count > 0 and retry_on_missing:
+                self.main_window.log_message(
+                    f"Batch {batch_num}: {missing_count}/{len(batch_df)} lines missing in response, retrying once..."
+                )
+                retry_text, _ = self._call_api(ai_service, prompt, model_name, api_config)
+                if retry_text:
+                    retry_translations = self.parse_numbered_text(retry_text, len(batch_df))
+                    # Fill in only the missing lines from retry result
+                    for i, (orig, retry_t) in enumerate(zip(translations, retry_translations)):
+                        if not orig and retry_t:
+                            translations[i] = retry_t
+                    successful_count = sum(1 for t in translations if t)
+                    self.main_window.log_message(
+                        f"After retry: {successful_count}/{len(batch_df)} lines successful"
+                    )
+
+            self.main_window.log_message(
+                f"Batch {batch_num} completed: {successful_count}/{len(batch_df)} translations successful"
+            )
+
+            # Update results and collect failed IDs for carry-over
+            failed_in_batch = []
+            for (_, row), translation in zip(batch_df.iterrows(), translations):
+                existing_results[row['id']] = {
+                    'id': row['id'],
+                    'raw': row['text'],
+                    'edit': translation,
+                    'status': '' if translation else 'failed'
+                }
+                if not translation and row['id'] not in carried_once:
+                    failed_in_batch.append(row['id'])
+                    carried_once.add(row['id'])
+
+            if failed_in_batch:
+                carry_ids = failed_in_batch
+                self.main_window.log_message(
+                    f"  {len(failed_in_batch)} failed rows carried to next batch: {failed_in_batch[:10]}"
+                )
+
+            # Auto-save after each batch
+            PromptHelper.save_results(existing_results, output_file)
+            self.update_progress()
+
+        # Log any remaining carry IDs that had no next batch
+        if carry_ids:
+            self.main_window.log_message(
+                f"Note: {len(carry_ids)} rows remain failed (no next batch): {carry_ids[:10]}"
+            )
 
         # Final save
         if existing_results:

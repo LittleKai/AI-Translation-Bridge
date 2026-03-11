@@ -222,8 +222,9 @@ exe = EXE(
             print("✓ Build completed successfully!")
 
             # 4. Xử lý Output
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            final_release_dir = self.project_root / "releases" / f"{self.app_filename}_{self.version}_{timestamp}"
+            final_release_dir = self.project_root / "releases" / self.app_filename
+            if final_release_dir.exists():
+                shutil.rmtree(final_release_dir)
             final_release_dir.mkdir(parents=True, exist_ok=True)
 
             # Folder gốc do PyInstaller tạo ra
@@ -270,7 +271,7 @@ exe = EXE(
         import zipfile
 
         releases_dir = self.project_root / "releases"
-        zip_name = f"{self.app_filename}_v{self.version}.zip"
+        zip_name = f"{self.app_filename}.zip"
         zip_path = releases_dir / zip_name
 
         print(f"\nCreating release zip: {zip_name}")
